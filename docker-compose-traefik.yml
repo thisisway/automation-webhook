@@ -3,8 +3,6 @@ services:
     image: traefik:v3.0
     container_name: traefik
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
     ports:
       - "80:80"
       - "443:443"
@@ -15,21 +13,6 @@ services:
       - ./acme.json:/acme.json
     networks:
       - traefik
-    labels:
-      - "traefik.enable=true"
-      # Dashboard
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.entrypoints=web"
-      - "traefik.http.routers.dashboard.middlewares=auth"
-      # API
-      - "traefik.http.routers.api.rule=Host(`traefik.localhost`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.api.service=api@internal"
-      - "traefik.http.routers.api.entrypoints=web"
-      # Autenticação básica para o dashboard
-      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$1UqozQlE$$Fx5ZekcJS3L3AWVbIGNYF/" # senha: admin
-      # API e Dashboard
-      - "traefik.http.services.api.loadbalancer.server.port=8080"
 
 networks:
   traefik:

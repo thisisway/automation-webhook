@@ -2,6 +2,7 @@
 api:
   dashboard: true
   debug: true
+  insecure: true  # Permite acesso sem HTTPS na porta 8080
 
 # Entry points
 entryPoints:
@@ -9,6 +10,8 @@ entryPoints:
     address: ":80"
   websecure:
     address: ":443"
+  traefik:
+    address: ":8080"
 
 # Configure providers
 providers:

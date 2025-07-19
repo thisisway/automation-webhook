@@ -69,7 +69,7 @@ get_server_ip() {
 wait_for_service() {
     local url=$1
     local service_name=$2
-    local max_attempts=30
+    local max_attempts=60  # Aumentei para 60 tentativas
     local attempt=0
     
     log_info "Aguardando ${service_name} ficar disponível..."
@@ -80,9 +80,13 @@ wait_for_service() {
             return 0
         fi
         
+        # A cada 10 tentativas, mostra uma mensagem
+        if [ $((attempt % 10)) -eq 0 ] && [ $attempt -gt 0 ]; then
+            log_info "Ainda aguardando... Tentativa ${attempt}/${max_attempts}"
+        fi
+        
         attempt=$((attempt + 1))
-        log_info "Tentativa ${attempt}/${max_attempts} - Aguardando ${service_name}..."
-        sleep 5
+        sleep 3  # Reduzi para 3 segundos
     done
     
     log_error "${service_name} não ficou disponível após ${max_attempts} tentativas"
@@ -231,13 +235,33 @@ log_success "Traefik iniciado!"
 # =============================================================================
 log_info "Verificando se o Traefik está funcionando..."
 
-# Aguardar Traefik ficar disponível
-if wait_for_service "http://$SERVER_IP:8080" "Traefik Dashboard"; then
-    log_success "Traefik Dashboard disponível em: http://$SERVER_IP:8080"
+# Primeiro verificar se o container está rodando
+log_info "Verificando status do container Traefik..."
+if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "traefik.*Up"; then
+    log_success "Container Traefik está rodando"
 else
-    log_error "Traefik não está respondendo. Verificando logs..."
+    log_error "Container Traefik não está rodando. Verificando logs..."
     docker-compose -f docker-compose-traefik.yml logs traefik
     exit 1
+fi
+
+# Aguardar um pouco para o Traefik inicializar
+log_info "Aguardando inicialização do Traefik..."
+sleep 15
+
+# Aguardar Traefik ficar disponível (teste interno)
+log_info "Testando acesso ao Dashboard do Traefik..."
+if wait_for_service "http://localhost:8080/dashboard/" "Traefik Dashboard"; then
+    log_success "Traefik Dashboard disponível internamente"
+    log_success "Traefik Dashboard acessível em: http://$SERVER_IP:8080/dashboard/"
+else
+    log_warning "Dashboard não respondeu na URL /dashboard/, tentando /..."
+    if curl -s -f "http://localhost:8080/" > /dev/null 2>&1; then
+        log_success "Traefik API disponível em: http://$SERVER_IP:8080/"
+    else
+        log_warning "Dashboard não está respondendo. Verificando logs..."
+        docker-compose -f docker-compose-traefik.yml logs --tail=20 traefik
+    fi
 fi
 
 # Verificar se as portas estão abertas
@@ -298,10 +322,11 @@ else
     exit 1
 fi
 
-# Testar endpoint
+# Testar endpoint (teste interno)
 log_info "Testando endpoint do webhook..."
-if curl -s -f "http://$SERVER_IP/src/test.php" > /dev/null 2>&1; then
-    log_success "Endpoint está respondendo!"
+if curl -s -f "http://localhost/src/test.php" > /dev/null 2>&1; then
+    log_success "Endpoint está respondendo internamente!"
+    log_success "Endpoint acessível em: http://$SERVER_IP/src/test.php"
 else
     log_warning "Endpoint não está respondendo ainda (pode levar alguns segundos para ficar disponível)"
 fi
@@ -326,7 +351,8 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo -e "${BLUE}🌐 ENDPOINTS DISPONÍVEIS:${NC}"
 echo "----------------------------------------"
-echo "• Traefik Dashboard: http://$SERVER_IP:8080"
+echo "• Traefik Dashboard: http://$SERVER_IP:8080/dashboard/"
+echo "• Traefik API: http://$SERVER_IP:8080/"
 echo "• Webhook API: http://webhook.bwserver.com.br"
 echo "• Teste local: http://$SERVER_IP/src/test.php"
 echo "• IP do Servidor: $SERVER_IP"
@@ -337,7 +363,7 @@ echo "----------------------------------------"
 echo "1. Configure seu DNS para apontar webhook.bwserver.com.br para $SERVER_IP"
 echo "2. Aguarde alguns minutos para o certificado SSL ser gerado"
 echo "3. Teste o webhook usando: http://$SERVER_IP/src/test.php"
-echo "4. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080"
+echo "4. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
 
 echo ""
 echo -e "${BLUE}🔍 COMANDOS ÚTEIS:${NC}"

@@ -94,7 +94,7 @@ class DockerManager {
                 throw new Exception("Container with name {$containerName} already exists");
             }
             
-            // Verificar se a rede traefik existe
+            // Verificar se a rede traefik existe, se não existir, criar
             $networkOutput = shell_exec("docker network ls --format '{{.Name}}' -f name=traefik");
             $networks = explode("\n", trim($networkOutput ?? ''));
             $traefikExists = false;
@@ -105,7 +105,7 @@ class DockerManager {
                 }
             }
             if (!$traefikExists) {
-                throw new Exception("Traefik network not found. Please create it first.");
+                $this->executeDockerCommand("network create traefik");
             }
             
             // Criar volumes para persistência de dados

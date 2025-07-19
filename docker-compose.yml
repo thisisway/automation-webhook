@@ -14,7 +14,7 @@ services:
       - "traefik.http.routers.automation-webhook.entrypoints=websecure"
       - "traefik.http.routers.automation-webhook.tls.certresolver=letsencrypt"
       - "traefik.http.services.automation-webhook.loadbalancer.server.port=80"
-      - "traefik.docker.network=traefik-network"
+      - "traefik.docker.network=traefik"
     environment:
       - PHP_MEMORY_LIMIT=256M
       - PHP_MAX_EXECUTION_TIME=300

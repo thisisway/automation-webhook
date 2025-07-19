@@ -9,8 +9,8 @@ class TraefikManager {
     
     private function ensureTraefikNetwork() {
         try {
-            // Verificar se a rede traefik-network existe
-            $dockerApiUrl = 'http://localhost/v1.41/networks/traefik-network';
+            // Verificar se a rede traefik existe
+            $dockerApiUrl = 'http://localhost/v1.41/networks/traefik';
             
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
@@ -33,7 +33,7 @@ class TraefikManager {
     
     private function createTraefikNetwork() {
         $networkConfig = [
-            'Name' => 'traefik-network',
+            'Name' => 'traefik',
             'Driver' => 'bridge',
             'EnableIPv6' => false,
             'IPAM' => [
@@ -105,7 +105,7 @@ class TraefikManager {
             'traefik.http.routers.' . $containerName . '.entrypoints' => 'websecure',
             'traefik.http.routers.' . $containerName . '.tls.certresolver' => 'letsencrypt',
             'traefik.http.services.' . $containerName . '.loadbalancer.server.port' => $port,
-            'traefik.docker.network' => 'traefik-network'
+            'traefik.docker.network' => 'traefik'
         ];
     }
     

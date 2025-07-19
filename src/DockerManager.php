@@ -11,7 +11,7 @@ class DockerManager {
     
     private function isDockerAvailable() {
         $output = shell_exec('which docker 2>/dev/null');
-        return !empty(trim($output));
+        return !empty(trim($output ?? ''));
     }
     
     private function executeDockerCommand($command) {
@@ -26,20 +26,20 @@ class DockerManager {
             throw new Exception("Docker command failed: $command\nOutput: $output");
         }
         
-        return trim($output);
+        return trim($output ?? '');
     }
     
     public function createN8nContainer($containerName, $vcpu, $mem, $subdomain) {
         try {
             // Verificar se o container já existe
             $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
-            if (!empty(trim($existingContainer))) {
+            if (!empty(trim($existingContainer ?? ''))) {
                 throw new Exception("Container with name {$containerName} already exists");
             }
             
             // Verificar se a rede traefik existe
             $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
-            if (empty(trim($networkExists))) {
+            if (empty(trim($networkExists ?? ''))) {
                 throw new Exception("Traefik network not found. Please create it first.");
             }
             
@@ -82,13 +82,13 @@ class DockerManager {
         try {
             // Verificar se o container já existe
             $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
-            if (!empty(trim($existingContainer))) {
+            if (!empty(trim($existingContainer ?? ''))) {
                 throw new Exception("Container with name {$containerName} already exists");
             }
             
             // Verificar se a rede traefik existe
             $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
-            if (empty(trim($networkExists))) {
+            if (empty(trim($networkExists ?? ''))) {
                 throw new Exception("Traefik network not found. Please create it first.");
             }
             

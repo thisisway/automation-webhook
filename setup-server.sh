@@ -8,7 +8,8 @@
 # 2. Configurar rede do Traefik
 # 3. Subir o Traefik via docker-compose
 # 4. Verificar se o Traefik está funcionando
-# 5. Subir o projeto principal
+# 5. Subir o Portainer (Gerenciador Docker)
+# 6. Subir o projeto principal
 # =============================================================================
 
 set -e  # Para o script em caso de erro
@@ -285,7 +286,49 @@ else
 fi
 
 # =============================================================================
-# 6. CONSTRUIR E SUBIR PROJETO PRINCIPAL
+# 6. SUBIR PORTAINER
+# =============================================================================
+log_info "Iniciando Portainer (Gerenciador Docker)..."
+
+# Parar container existente se estiver rodando
+if docker ps -q --filter "name=portainer" | grep -q .; then
+    log_info "Parando container Portainer existente..."
+    docker-compose -f docker-compose-portainer.yml down
+fi
+
+# Subir Portainer
+log_info "Subindo Portainer com docker-compose..."
+docker-compose -f docker-compose-portainer.yml up -d
+
+log_success "Portainer iniciado!"
+
+# Verificar se Portainer está rodando
+log_info "Verificando status do container Portainer..."
+if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "portainer.*Up"; then
+    log_success "Container Portainer está rodando"
+else
+    log_warning "Container Portainer pode estar inicializando..."
+    docker-compose -f docker-compose-portainer.yml logs --tail=10 portainer
+fi
+
+# Aguardar um pouco para o Portainer inicializar
+log_info "Aguardando inicialização do Portainer..."
+sleep 10
+
+# Testar acesso ao Portainer
+log_info "Testando acesso ao Portainer..."
+if curl -s -f "http://localhost:9000/" > /dev/null 2>&1; then
+    log_success "Portainer está disponível em: http://$SERVER_IP:9000"
+    log_success "Portainer será acessível via HTTPS em: https://manager.bwserver.com.br"
+else
+    log_warning "Portainer ainda não está respondendo (pode levar alguns segundos)"
+fi
+
+# =============================================================================
+# 7. CONSTRUIR E SUBIR PROJETO PRINCIPAL
+# =============================================================================
+# =============================================================================
+# 7. CONSTRUIR E SUBIR PROJETO PRINCIPAL
 # =============================================================================
 log_info "Construindo e iniciando projeto principal..."
 
@@ -306,7 +349,7 @@ docker-compose up -d
 log_success "Projeto principal iniciado!"
 
 # =============================================================================
-# 7. VERIFICAR PROJETO PRINCIPAL
+# 8. VERIFICAR PROJETO PRINCIPAL
 # =============================================================================
 log_info "Verificando se o projeto está funcionando..."
 
@@ -332,7 +375,7 @@ else
 fi
 
 # =============================================================================
-# 8. RESUMO FINAL
+# 9. RESUMO FINAL
 # =============================================================================
 echo ""
 echo -e "${GREEN}"
@@ -353,6 +396,8 @@ echo -e "${BLUE}🌐 ENDPOINTS DISPONÍVEIS:${NC}"
 echo "----------------------------------------"
 echo "• Traefik Dashboard: http://$SERVER_IP:8080/dashboard/"
 echo "• Traefik API: http://$SERVER_IP:8080/"
+echo "• Portainer (Gerenciador): http://$SERVER_IP:9000"
+echo "• Portainer HTTPS: https://manager.bwserver.com.br"
 echo "• Webhook API: http://webhook.bwserver.com.br"
 echo "• Teste local: http://$SERVER_IP/src/test.php"
 echo "• IP do Servidor: $SERVER_IP"
@@ -360,17 +405,22 @@ echo "• IP do Servidor: $SERVER_IP"
 echo ""
 echo -e "${BLUE}📝 PRÓXIMOS PASSOS:${NC}"
 echo "----------------------------------------"
-echo "1. Configure seu DNS para apontar webhook.bwserver.com.br para $SERVER_IP"
-echo "2. Aguarde alguns minutos para o certificado SSL ser gerado"
-echo "3. Teste o webhook usando: http://$SERVER_IP/src/test.php"
-echo "4. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
+echo "1. Configure seu DNS para apontar os domínios para $SERVER_IP:"
+echo "   - webhook.bwserver.com.br → $SERVER_IP"
+echo "   - manager.bwserver.com.br → $SERVER_IP"
+echo "2. Aguarde alguns minutos para os certificados SSL serem gerados"
+echo "3. Acesse o Portainer e configure uma senha de administrador"
+echo "4. Teste o webhook usando: http://$SERVER_IP/src/test.php"
+echo "5. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
 
 echo ""
 echo -e "${BLUE}🔍 COMANDOS ÚTEIS:${NC}"
 echo "----------------------------------------"
 echo "• Ver logs do Traefik: docker-compose -f docker-compose-traefik.yml logs -f traefik"
+echo "• Ver logs do Portainer: docker-compose -f docker-compose-portainer.yml logs -f portainer"
 echo "• Ver logs do projeto: docker-compose logs -f automation-webhook"
 echo "• Reiniciar tudo: docker-compose down && docker-compose up -d"
+echo "• Reiniciar Portainer: docker-compose -f docker-compose-portainer.yml restart"
 
 echo ""
 log_success "Setup automatizado concluído com sucesso! 🎉"

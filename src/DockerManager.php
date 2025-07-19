@@ -11,7 +11,41 @@ class DockerManager {
     
     private function isDockerAvailable() {
         // Verificar se a Docker API está disponível
-        $dockerApiUrl = 'http://localhost/v1.41/version';
+        // Tentar diferentes endpoints da Docker API
+        $dockerSockets = [
+            '/var/run/docker.sock',
+            '/var/run/docker.sock.raw'
+        ];
+        
+        $dockerApiVersions = ['v1.41', 'v1.40', 'v1.39'];
+        $dockerApiUrl = null;
+        
+        foreach ($dockerSockets as $socket) {
+            if (file_exists($socket)) {
+            foreach ($dockerApiVersions as $version) {
+                $testUrl = "http://localhost/{$version}/version";
+                
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $testUrl);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, $socket);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+                
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                
+                if ($httpCode === 200) {
+                $dockerApiUrl = $testUrl;
+                break 2; // Sair dos dois loops
+                }
+            }
+            }
+        }
+        
+        if (!$dockerApiUrl) {
+            return false;
+        }
         
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);

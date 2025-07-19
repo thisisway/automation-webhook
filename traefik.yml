@@ -1,0 +1,32 @@
+# Enable API and Dashboard
+api:
+  dashboard: true
+  debug: true
+
+# Entry points
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+# Configure providers
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: traefik
+    watch: true
+
+# Certificate resolvers
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@waycloud.com.br
+      storage: acme.json
+      httpChallenge:
+        entryPoint: web
+
+# Log configuration
+log:
+  level: INFO

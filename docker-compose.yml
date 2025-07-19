@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  automation-webhook:
+    build: .
+    container_name: automation-webhook
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./src:/var/www/html/src
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`)"
+      - "traefik.http.routers.automation-webhook.entrypoints=websecure"
+      - "traefik.http.routers.automation-webhook.tls.certresolver=letsencrypt"
+      - "traefik.http.services.automation-webhook.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik-network"
+    environment:
+      - PHP_MEMORY_LIMIT=256M
+      - PHP_MAX_EXECUTION_TIME=300
+
+networks:
+  traefik:
+    external: true

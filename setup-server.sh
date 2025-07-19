@@ -42,6 +42,29 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Função para obter IP do servidor
+get_server_ip() {
+    # Tenta obter IP público primeiro
+    local public_ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || curl -s --max-time 5 ipecho.net/plain 2>/dev/null || curl -s --max-time 5 icanhazip.com 2>/dev/null)
+    
+    if [[ -n "$public_ip" && "$public_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo "$public_ip"
+        return 0
+    fi
+    
+    # Se não conseguir IP público, usa IP privado da interface principal
+    local private_ip=$(ip route get 1.1.1.1 | awk '{print $7; exit}' 2>/dev/null)
+    
+    if [[ -n "$private_ip" && "$private_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo "$private_ip"
+        return 0
+    fi
+    
+    # Fallback para localhost
+    echo "localhost"
+    return 1
+}
+
 # Função para aguardar serviço estar pronto
 wait_for_service() {
     local url=$1
@@ -81,6 +104,10 @@ fi
 
 log_info "Iniciando setup automatizado do servidor..."
 
+# Obter IP do servidor
+SERVER_IP=$(get_server_ip)
+log_info "IP do servidor detectado: $SERVER_IP"
+
 # =============================================================================
 # 1. INSTALAÇÃO DO DOCKER
 # =============================================================================
@@ -90,6 +117,13 @@ if command_exists docker && command_exists docker-compose; then
     log_success "Docker já está instalado"
     docker --version
     docker-compose --version
+    
+    # Verificar se curl está instalado
+    if ! command_exists curl; then
+        log_info "Instalando curl..."
+        apt-get update -y
+        apt-get install -y curl net-tools
+    fi
 else
     log_info "Docker não encontrado. Iniciando instalação..."
     
@@ -105,7 +139,8 @@ else
         gnupg \
         lsb-release \
         software-properties-common \
-        apt-transport-https
+        apt-transport-https \
+        net-tools
     
     # Adicionar chave GPG oficial do Docker
     log_info "Adicionando chave GPG do Docker..."
@@ -197,8 +232,8 @@ log_success "Traefik iniciado!"
 log_info "Verificando se o Traefik está funcionando..."
 
 # Aguardar Traefik ficar disponível
-if wait_for_service "http://localhost:8080" "Traefik Dashboard"; then
-    log_success "Traefik Dashboard disponível em: http://localhost:8080"
+if wait_for_service "http://$SERVER_IP:8080" "Traefik Dashboard"; then
+    log_success "Traefik Dashboard disponível em: http://$SERVER_IP:8080"
 else
     log_error "Traefik não está respondendo. Verificando logs..."
     docker-compose -f docker-compose-traefik.yml logs traefik
@@ -265,7 +300,7 @@ fi
 
 # Testar endpoint
 log_info "Testando endpoint do webhook..."
-if curl -s -f "http://localhost/src/test.php" > /dev/null 2>&1; then
+if curl -s -f "http://$SERVER_IP/src/test.php" > /dev/null 2>&1; then
     log_success "Endpoint está respondendo!"
 else
     log_warning "Endpoint não está respondendo ainda (pode levar alguns segundos para ficar disponível)"
@@ -291,16 +326,18 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo -e "${BLUE}🌐 ENDPOINTS DISPONÍVEIS:${NC}"
 echo "----------------------------------------"
-echo "• Traefik Dashboard: http://localhost:8080"
+echo "• Traefik Dashboard: http://$SERVER_IP:8080"
 echo "• Webhook API: http://webhook.bwserver.com.br"
-echo "• Teste local: http://localhost/src/test.php"
+echo "• Teste local: http://$SERVER_IP/src/test.php"
+echo "• IP do Servidor: $SERVER_IP"
 
 echo ""
 echo -e "${BLUE}📝 PRÓXIMOS PASSOS:${NC}"
 echo "----------------------------------------"
-echo "1. Configure seu DNS para apontar webhook.bwserver.com.br para este servidor"
+echo "1. Configure seu DNS para apontar webhook.bwserver.com.br para $SERVER_IP"
 echo "2. Aguarde alguns minutos para o certificado SSL ser gerado"
-echo "3. Teste o webhook usando o arquivo test.php"
+echo "3. Teste o webhook usando: http://$SERVER_IP/src/test.php"
+echo "4. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080"
 
 echo ""
 echo -e "${BLUE}🔍 COMANDOS ÚTEIS:${NC}"
@@ -320,6 +357,23 @@ echo "Docker Version: $(docker --version)"
 echo "Docker Compose Version: $(docker-compose --version)"
 echo "Sistema: $(lsb_release -d | cut -f2)"
 echo "Arquitetura: $(uname -m)"
+echo "IP do Servidor: $SERVER_IP"
 echo "Data/Hora: $(date)"
+
+# Mostrar informações de rede
+echo ""
+echo -e "${BLUE}🌐 INFORMAÇÕES DE REDE:${NC}"
+echo "----------------------------------------"
+if [[ "$SERVER_IP" != "localhost" ]]; then
+    echo "✅ IP detectado automaticamente: $SERVER_IP"
+    # Verificar se é IP público ou privado
+    if [[ "$SERVER_IP" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.) ]]; then
+        echo "ℹ️  IP Privado detectado - configure port forwarding se necessário"
+    else
+        echo "🌍 IP Público detectado - servidor acessível externamente"
+    fi
+else
+    echo "⚠️  Não foi possível detectar IP - usando localhost como fallback"
+fi
 
 exit 0

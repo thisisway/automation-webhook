@@ -1,193 +1,216 @@
 <?php
 
 class DockerManager {
-    private $dockerSocket;
     
     public function __construct() {
-        $this->dockerSocket = '/var/run/docker.sock';
-        if (!file_exists($this->dockerSocket)) {
-            throw new Exception('Docker socket not found. Make sure Docker is running.');
+        // Verificar se o comando docker está disponível
+        if (!$this->isDockerAvailable()) {
+            throw new Exception('Docker is not available. Make sure Docker is running and accessible.');
         }
+    }
+    
+    private function isDockerAvailable() {
+        $output = shell_exec('which docker 2>/dev/null');
+        return !empty(trim($output));
+    }
+    
+    private function executeDockerCommand($command) {
+        $fullCommand = "docker $command 2>&1";
+        $output = shell_exec($fullCommand);
+        $exitCode = 0;
+        
+        // Verificar se o comando foi executado com sucesso
+        exec($fullCommand, $outputArray, $exitCode);
+        
+        if ($exitCode !== 0) {
+            throw new Exception("Docker command failed: $command\nOutput: $output");
+        }
+        
+        return trim($output);
     }
     
     public function createN8nContainer($containerName, $vcpu, $mem, $subdomain) {
-        $memLimit = $mem . 'm';
-        $cpuLimit = $vcpu;
-        
-        // Configuração do N8N
-        $config = [
-            'Image' => 'n8nio/n8n:latest',
-            'name' => $containerName,
-            'Env' => [
-                'N8N_HOST=' . $subdomain,
-                'N8N_PORT=5678',
-                'N8N_PROTOCOL=https',
-                'WEBHOOK_URL=https://' . $subdomain,
-                'GENERIC_TIMEZONE=America/Sao_Paulo'
-            ],
-            'HostConfig' => [
-                'Memory' => $mem * 1024 * 1024, // Converter MB para bytes
-                'CpuShares' => $vcpu * 1024, // CPU shares
-                'RestartPolicy' => [
-                    'Name' => 'unless-stopped'
-                ],
-                'NetworkMode' => 'traefik-network'
-            ],
-            'Labels' => [
-                'traefik.enable' => 'true',
-                'traefik.http.routers.' . $containerName . '.rule' => 'Host(`' . $subdomain . '`)',
-                'traefik.http.routers.' . $containerName . '.entrypoints' => 'websecure',
-                'traefik.http.routers.' . $containerName . '.tls.certresolver' => 'letsencrypt',
-                'traefik.http.services.' . $containerName . '.loadbalancer.server.port' => '5678',
-                'traefik.docker.network' => 'traefik-network'
-            ],
-            'ExposedPorts' => [
-                '5678/tcp' => []
-            ]
-        ];
-        
-        return $this->createContainer($config);
-    }
-    
-    public function createEvoApiContainer($containerName, $vcpu, $mem, $subdomain) {
-        $memLimit = $mem . 'm';
-        $cpuLimit = $vcpu;
-        
-        // Configuração do Evolution API
-        $config = [
-            'Image' => 'davidsongomes/evolution-api:v2.1.1',
-            'name' => $containerName,
-            'Env' => [
-                'SERVER_TYPE=https',
-                'SERVER_URL=https://' . $subdomain,
-                'CORS_ORIGIN=*',
-                'CORS_METHODS=GET,POST,PUT,DELETE',
-                'CORS_CREDENTIALS=true',
-                'LOG_LEVEL=ERROR',
-                'LOG_COLOR=true',
-                'DEL_INSTANCE=false',
-                'DATABASE_ENABLED=true',
-                'DATABASE_CONNECTION_URI=file:./db/database.db',
-                'DATABASE_CONNECTION_CLIENT_NAME=evolution_v2',
-                'REDIS_ENABLED=false',
-                'RABBITMQ_ENABLED=false',
-                'WEBSOCKET_ENABLED=false',
-                'WA_BUSINESS_TOKEN_WEBHOOK=evolution',
-                'WA_BUSINESS_URL=https://graph.facebook.com',
-                'WA_BUSINESS_VERSION=v20.0',
-                'WA_BUSINESS_LANGUAGE=pt_BR',
-                'WEBHOOK_GLOBAL_ENABLED=false',
-                'CONFIG_SESSION_PHONE_CLIENT=Evolution API',
-                'CONFIG_SESSION_PHONE_NAME=Chrome',
-                'QRCODE_LIMIT=30',
-                'AUTHENTICATION_TYPE=apikey',
-                'AUTHENTICATION_API_KEY=B6D711FCDE4D4FD5936544120E713976',
-                'AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true',
-                'LANGUAGE=en'
-            ],
-            'HostConfig' => [
-                'Memory' => $mem * 1024 * 1024, // Converter MB para bytes
-                'CpuShares' => $vcpu * 1024, // CPU shares
-                'RestartPolicy' => [
-                    'Name' => 'unless-stopped'
-                ],
-                'NetworkMode' => 'traefik-network',
-                'Binds' => [
-                    $containerName . '_evolution_instances:/evolution/instances',
-                    $containerName . '_evolution_store:/evolution/store'
-                ]
-            ],
-            'Labels' => [
-                'traefik.enable' => 'true',
-                'traefik.http.routers.' . $containerName . '.rule' => 'Host(`' . $subdomain . '`)',
-                'traefik.http.routers.' . $containerName . '.entrypoints' => 'websecure',
-                'traefik.http.routers.' . $containerName . '.tls.certresolver' => 'letsencrypt',
-                'traefik.http.services.' . $containerName . '.loadbalancer.server.port' => '8080',
-                'traefik.docker.network' => 'traefik-network'
-            ],
-            'ExposedPorts' => [
-                '8080/tcp' => []
-            ]
-        ];
-        
-        return $this->createContainer($config);
-    }
-    
-    private function createContainer($config) {
         try {
-            // Fazer requisição para a API do Docker
-            $dockerApiUrl = 'http://localhost/v1.41/containers/create?name=' . $config['name'];
-            
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($config));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-            ]);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, $this->dockerSocket);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode !== 201) {
-                throw new Exception('Failed to create container: ' . $response);
+            // Verificar se o container já existe
+            $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
+            if (!empty(trim($existingContainer))) {
+                throw new Exception("Container with name {$containerName} already exists");
             }
             
-            $containerInfo = json_decode($response, true);
-            $containerId = $containerInfo['Id'];
+            // Verificar se a rede traefik existe
+            $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
+            if (empty(trim($networkExists))) {
+                throw new Exception("Traefik network not found. Please create it first.");
+            }
             
-            // Iniciar o container
-            $this->startContainer($containerId);
+            // Montar comando docker run
+            $dockerCommand = "run -d" .
+                " --name {$containerName}" .
+                " --restart unless-stopped" .
+                " --memory {$mem}m" .
+                " --cpus {$vcpu}" .
+                " --network traefik" .
+                " --expose 5678" .
+                " -e N8N_HOST={$subdomain}" .
+                " -e N8N_PORT=5678" .
+                " -e N8N_PROTOCOL=https" .
+                " -e WEBHOOK_URL=https://{$subdomain}" .
+                " -e GENERIC_TIMEZONE=America/Sao_Paulo" .
+                " -l traefik.enable=true" .
+                " -l traefik.http.routers.{$containerName}.rule=Host\\(\\`{$subdomain}\\`\\)" .
+                " -l traefik.http.routers.{$containerName}.entrypoints=websecure" .
+                " -l traefik.http.routers.{$containerName}.tls.certresolver=letsencrypt" .
+                " -l traefik.http.services.{$containerName}.loadbalancer.server.port=5678" .
+                " -l traefik.docker.network=traefik" .
+                " n8nio/n8n:latest";
+            
+            $containerId = $this->executeDockerCommand($dockerCommand);
             
             return [
                 'id' => $containerId,
-                'name' => $config['name'],
-                'status' => 'started'
+                'name' => $containerName,
+                'status' => 'started',
+                'subdomain' => $subdomain
             ];
             
         } catch (Exception $e) {
-            throw new Exception('Docker operation failed: ' . $e->getMessage());
+            throw new Exception('Failed to create N8N container: ' . $e->getMessage());
         }
     }
     
-    private function startContainer($containerId) {
-        $dockerApiUrl = 'http://localhost/v1.41/containers/' . $containerId . '/start';
-        
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, $this->dockerSocket);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($httpCode !== 204) {
-            throw new Exception('Failed to start container: ' . $response);
+    public function createEvoApiContainer($containerName, $vcpu, $mem, $subdomain) {
+        try {
+            // Verificar se o container já existe
+            $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
+            if (!empty(trim($existingContainer))) {
+                throw new Exception("Container with name {$containerName} already exists");
+            }
+            
+            // Verificar se a rede traefik existe
+            $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
+            if (empty(trim($networkExists))) {
+                throw new Exception("Traefik network not found. Please create it first.");
+            }
+            
+            // Criar volumes para persistência de dados
+            $this->executeDockerCommand("volume create {$containerName}_evolution_instances");
+            $this->executeDockerCommand("volume create {$containerName}_evolution_store");
+            
+            // Montar comando docker run
+            $dockerCommand = "run -d" .
+                " --name {$containerName}" .
+                " --restart unless-stopped" .
+                " --memory {$mem}m" .
+                " --cpus {$vcpu}" .
+                " --network traefik" .
+                " --expose 8080" .
+                " -v {$containerName}_evolution_instances:/evolution/instances" .
+                " -v {$containerName}_evolution_store:/evolution/store" .
+                " -e SERVER_TYPE=https" .
+                " -e SERVER_URL=https://{$subdomain}" .
+                " -e CORS_ORIGIN=*" .
+                " -e CORS_METHODS=GET,POST,PUT,DELETE" .
+                " -e CORS_CREDENTIALS=true" .
+                " -e LOG_LEVEL=ERROR" .
+                " -e LOG_COLOR=true" .
+                " -e DEL_INSTANCE=false" .
+                " -e DATABASE_ENABLED=true" .
+                " -e DATABASE_CONNECTION_URI=file:./db/database.db" .
+                " -e DATABASE_CONNECTION_CLIENT_NAME=evolution_v2" .
+                " -e REDIS_ENABLED=false" .
+                " -e RABBITMQ_ENABLED=false" .
+                " -e WEBSOCKET_ENABLED=false" .
+                " -e WA_BUSINESS_TOKEN_WEBHOOK=evolution" .
+                " -e WA_BUSINESS_URL=https://graph.facebook.com" .
+                " -e WA_BUSINESS_VERSION=v20.0" .
+                " -e WA_BUSINESS_LANGUAGE=pt_BR" .
+                " -e WEBHOOK_GLOBAL_ENABLED=false" .
+                " -e CONFIG_SESSION_PHONE_CLIENT='Evolution API'" .
+                " -e CONFIG_SESSION_PHONE_NAME=Chrome" .
+                " -e QRCODE_LIMIT=30" .
+                " -e AUTHENTICATION_TYPE=apikey" .
+                " -e AUTHENTICATION_API_KEY=B6D711FCDE4D4FD5936544120E713976" .
+                " -e AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true" .
+                " -e LANGUAGE=en" .
+                " -l traefik.enable=true" .
+                " -l traefik.http.routers.{$containerName}.rule=Host\\(\\`{$subdomain}\\`\\)" .
+                " -l traefik.http.routers.{$containerName}.entrypoints=websecure" .
+                " -l traefik.http.routers.{$containerName}.tls.certresolver=letsencrypt" .
+                " -l traefik.http.services.{$containerName}.loadbalancer.server.port=8080" .
+                " -l traefik.docker.network=traefik" .
+                " davidsongomes/evolution-api:v2.1.1";
+            
+            $containerId = $this->executeDockerCommand($dockerCommand);
+            
+            return [
+                'id' => $containerId,
+                'name' => $containerName,
+                'status' => 'started',
+                'subdomain' => $subdomain
+            ];
+            
+        } catch (Exception $e) {
+            throw new Exception('Failed to create Evolution API container: ' . $e->getMessage());
         }
     }
     
     public function listContainers() {
-        $dockerApiUrl = 'http://localhost/v1.41/containers/json?all=true';
-        
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, $this->dockerSocket);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($httpCode !== 200) {
-            throw new Exception('Failed to list containers: ' . $response);
+        try {
+            $output = $this->executeDockerCommand("ps -a --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'");
+            
+            // Converter saída em array estruturado
+            $lines = explode("\n", $output);
+            $containers = [];
+            
+            // Pular o cabeçalho (primeira linha)
+            for ($i = 1; $i < count($lines); $i++) {
+                $line = trim($lines[$i]);
+                if (!empty($line)) {
+                    $parts = preg_split('/\s+/', $line, 5);
+                    if (count($parts) >= 4) {
+                        $containers[] = [
+                            'id' => $parts[0],
+                            'name' => $parts[1],
+                            'image' => $parts[2],
+                            'status' => $parts[3],
+                            'ports' => isset($parts[4]) ? $parts[4] : ''
+                        ];
+                    }
+                }
+            }
+            
+            return $containers;
+            
+        } catch (Exception $e) {
+            throw new Exception('Failed to list containers: ' . $e->getMessage());
         }
-        
-        return json_decode($response, true);
+    }
+    
+    public function getContainerInfo($containerName) {
+        try {
+            $output = $this->executeDockerCommand("inspect {$containerName}");
+            return json_decode($output, true);
+        } catch (Exception $e) {
+            throw new Exception('Failed to get container info: ' . $e->getMessage());
+        }
+    }
+    
+    public function stopContainer($containerName) {
+        try {
+            $this->executeDockerCommand("stop {$containerName}");
+            return ['status' => 'stopped', 'name' => $containerName];
+        } catch (Exception $e) {
+            throw new Exception('Failed to stop container: ' . $e->getMessage());
+        }
+    }
+    
+    public function removeContainer($containerName) {
+        try {
+            $this->executeDockerCommand("rm -f {$containerName}");
+            return ['status' => 'removed', 'name' => $containerName];
+        } catch (Exception $e) {
+            throw new Exception('Failed to remove container: ' . $e->getMessage());
+        }
     }
 }
 ?>

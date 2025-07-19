@@ -10,12 +10,24 @@ class DockerManager {
     }
     
     private function isDockerAvailable() {
-        $output = shell_exec('which docker 2>/dev/null');
-        return !empty(trim($output ?? ''));
+        // Verificar se a Docker API está disponível
+        $dockerApiUrl = 'http://localhost/v1.41/version';
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, '/var/run/docker.sock');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        return $httpCode === 200;
     }
     
     private function executeDockerCommand($command) {
-        $fullCommand = "docker $command 2>&1";
+        $fullCommand = "sudo docker $command 2>&1";
         $output = shell_exec($fullCommand);
         $exitCode = 0;
         
@@ -29,50 +41,157 @@ class DockerManager {
         return trim($output ?? '');
     }
     
+    private function dockerApiRequest($endpoint, $method = 'GET', $data = null) {
+        $dockerApiUrl = "http://localhost/v1.41{$endpoint}";
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dockerApiUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, '/var/run/docker.sock');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        if ($method === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            if ($data) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            }
+        }
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+        
+        if ($error) {
+            throw new Exception("Docker API error: $error");
+        }
+        
+        return [
+            'status_code' => $httpCode,
+            'body' => $response,
+            'data' => json_decode($response, true)
+        ];
+    }
+    
+    private function checkContainerExists($containerName) {
+        $result = $this->dockerApiRequest("/containers/json?all=true&filters=" . urlencode(json_encode(['name' => [$containerName]])));
+        
+        if ($result['status_code'] !== 200) {
+            throw new Exception("Failed to check container existence");
+        }
+        
+        return !empty($result['data']);
+    }
+    
+    private function checkNetworkExists($networkName) {
+        $result = $this->dockerApiRequest("/networks");
+        
+        if ($result['status_code'] !== 200) {
+            throw new Exception("Failed to check network existence");
+        }
+        
+        foreach ($result['data'] as $network) {
+            if ($network['Name'] === $networkName) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    private function createNetwork($networkName) {
+        $networkConfig = [
+            'Name' => $networkName,
+            'Driver' => 'bridge',
+            'EnableIPv6' => false,
+            'IPAM' => [
+                'Config' => [
+                    [
+                        'Subnet' => '172.20.0.0/16'
+                    ]
+                ]
+            ],
+            'Internal' => false,
+            'Attachable' => true,
+            'Labels' => [
+                'description' => 'Network for containers'
+            ]
+        ];
+        
+        $result = $this->dockerApiRequest("/networks/create", 'POST', $networkConfig);
+        
+        if ($result['status_code'] !== 201) {
+            throw new Exception("Failed to create network: " . $result['body']);
+        }
+        
+        return $result['data'];
+    }
+    
+    private function createContainer($config) {
+        $result = $this->dockerApiRequest("/containers/create", 'POST', $config);
+        
+        if ($result['status_code'] !== 201) {
+            throw new Exception("Failed to create container: " . $result['body']);
+        }
+        
+        $containerId = $result['data']['Id'];
+        
+        // Iniciar o container
+        $startResult = $this->dockerApiRequest("/containers/{$containerId}/start", 'POST');
+        
+        if ($startResult['status_code'] !== 204) {
+            throw new Exception("Failed to start container: " . $startResult['body']);
+        }
+        
+        return $containerId;
+    }
+    
     public function createN8nContainer($containerName, $vcpu, $mem, $subdomain) {
         try {
-            // Verificar se o container já existe
-            $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
-            if (!empty(trim($existingContainer ?? ''))) {
+            // Verificar se o container já existe usando API
+            if ($this->checkContainerExists($containerName)) {
                 throw new Exception("Container with name {$containerName} already exists");
             }
             
             // Verificar se a rede traefik existe, se não existir, criar
-            $networkOutput = shell_exec("docker network ls --format '{{.Name}}' -f name=traefik");
-            $networks = explode("\n", trim($networkOutput ?? ''));
-            $traefikExists = false;
-            foreach ($networks as $network) {
-                if (trim($network) === 'traefik') {
-                    $traefikExists = true;
-                    break;
-                }
-            }
-            if (!$traefikExists) {
-                $this->executeDockerCommand("network create traefik");
+            if (!$this->checkNetworkExists('traefik')) {
+                $this->createNetwork('traefik');
             }
             
-            // Montar comando docker run
-            $dockerCommand = "run -d" .
-                " --name {$containerName}" .
-                " --restart unless-stopped" .
-                " --memory {$mem}m" .
-                " --cpus {$vcpu}" .
-                " --network traefik" .
-                " --expose 5678" .
-                " -e N8N_HOST={$subdomain}" .
-                " -e N8N_PORT=5678" .
-                " -e N8N_PROTOCOL=https" .
-                " -e WEBHOOK_URL=https://{$subdomain}" .
-                " -e GENERIC_TIMEZONE=America/Sao_Paulo" .
-                " -l traefik.enable=true" .
-                " -l traefik.http.routers.{$containerName}.rule=Host\\(\\`{$subdomain}\\`\\)" .
-                " -l traefik.http.routers.{$containerName}.entrypoints=websecure" .
-                " -l traefik.http.routers.{$containerName}.tls.certresolver=letsencrypt" .
-                " -l traefik.http.services.{$containerName}.loadbalancer.server.port=5678" .
-                " -l traefik.docker.network=traefik" .
-                " n8nio/n8n:latest";
+            // Configuração do container usando Docker API
+            $containerConfig = [
+                'Image' => 'n8nio/n8n:latest',
+                'name' => $containerName,
+                'Env' => [
+                    "N8N_HOST={$subdomain}",
+                    "N8N_PORT=5678",
+                    "N8N_PROTOCOL=https",
+                    "WEBHOOK_URL=https://{$subdomain}",
+                    "GENERIC_TIMEZONE=America/Sao_Paulo"
+                ],
+                'ExposedPorts' => [
+                    '5678/tcp' => (object)[]
+                ],
+                'HostConfig' => [
+                    'Memory' => $mem * 1024 * 1024, // Converter MB para bytes
+                    'CpuQuota' => (int)($vcpu * 100000), // Converter para quota
+                    'RestartPolicy' => [
+                        'Name' => 'unless-stopped'
+                    ],
+                    'NetworkMode' => 'traefik'
+                ],
+                'Labels' => [
+                    'traefik.enable' => 'true',
+                    "traefik.http.routers.{$containerName}.rule" => "Host(`{$subdomain}`)",
+                    "traefik.http.routers.{$containerName}.entrypoints" => 'websecure',
+                    "traefik.http.routers.{$containerName}.tls.certresolver" => 'letsencrypt',
+                    "traefik.http.services.{$containerName}.loadbalancer.server.port" => '5678',
+                    'traefik.docker.network' => 'traefik'
+                ]
+            ];
             
-            $containerId = $this->executeDockerCommand($dockerCommand);
+            $containerId = $this->createContainer($containerConfig);
             
             return [
                 'id' => $containerId,
@@ -88,24 +207,14 @@ class DockerManager {
     
     public function createEvoApiContainer($containerName, $vcpu, $mem, $subdomain) {
         try {
-            // Verificar se o container já existe
-            $existingContainer = shell_exec("docker ps -aq -f name=^{$containerName}$");
-            if (!empty(trim($existingContainer ?? ''))) {
+            // Verificar se o container já existe usando API
+            if ($this->checkContainerExists($containerName)) {
                 throw new Exception("Container with name {$containerName} already exists");
             }
             
             // Verificar se a rede traefik existe, se não existir, criar
-            $networkOutput = shell_exec("docker network ls --format '{{.Name}}' -f name=traefik");
-            $networks = explode("\n", trim($networkOutput ?? ''));
-            $traefikExists = false;
-            foreach ($networks as $network) {
-                if (trim($network) === 'traefik') {
-                    $traefikExists = true;
-                    break;
-                }
-            }
-            if (!$traefikExists) {
-                $this->executeDockerCommand("network create traefik");
+            if (!$this->checkNetworkExists('traefik')) {
+                $this->createNetwork('traefik');
             }
             
             // Criar volumes para persistência de dados

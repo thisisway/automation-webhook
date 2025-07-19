@@ -89,7 +89,17 @@ class WebhookHandler {
         $hash = uniqid();
         $containerName = "{$client}-{$soft}-{$hash}";
         $subdomain = "{$client}-{$soft}-{$hash}.bwserver.com.br";
-        
+
+        return [
+            'container_name' => $containerName,
+            'subdomain' => $subdomain,
+            'vcpu' => $vcpu,
+            'memory' => $mem . 'MB',
+            'software' => $soft,
+            'status' => 'creating',
+            'url' => "https://{$subdomain}"
+        ];
+        die();
         // Criar o container baseado no tipo de software
         if ($soft === 'n8n') {
             $containerData = $this->dockerManager->createN8nContainer($containerName, $vcpu, $mem, $subdomain);

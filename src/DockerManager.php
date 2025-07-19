@@ -38,8 +38,16 @@ class DockerManager {
             }
             
             // Verificar se a rede traefik existe
-            $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
-            if (empty(trim($networkExists ?? ''))) {
+            $networkOutput = shell_exec("docker network ls --format '{{.Name}}' -f name=traefik");
+            $networks = explode("\n", trim($networkOutput ?? ''));
+            $traefikExists = false;
+            foreach ($networks as $network) {
+                if (trim($network) === 'traefik') {
+                    $traefikExists = true;
+                    break;
+                }
+            }
+            if (!$traefikExists) {
                 throw new Exception("Traefik network not found. Please create it first.");
             }
             
@@ -87,8 +95,16 @@ class DockerManager {
             }
             
             // Verificar se a rede traefik existe
-            $networkExists = shell_exec("docker network ls -q -f name=^traefik$");
-            if (empty(trim($networkExists ?? ''))) {
+            $networkOutput = shell_exec("docker network ls --format '{{.Name}}' -f name=traefik");
+            $networks = explode("\n", trim($networkOutput ?? ''));
+            $traefikExists = false;
+            foreach ($networks as $network) {
+                if (trim($network) === 'traefik') {
+                    $traefikExists = true;
+                    break;
+                }
+            }
+            if (!$traefikExists) {
                 throw new Exception("Traefik network not found. Please create it first.");
             }
             

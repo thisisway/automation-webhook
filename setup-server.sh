@@ -101,13 +101,26 @@ echo "             AUTOMATION WEBHOOK - SETUP AUTOMATIZADO"
 echo "============================================================================="
 echo -e "${NC}"
 
-# Verificar se está rodando como root
-if [[ $EUID -ne 0 ]]; then
-   log_error "Este script deve ser executado como root"
-   exit 1
+# Verificar se sudo está disponível
+if ! command_exists sudo; then
+    log_error "Este script requer sudo para funcionar. Por favor, instale o sudo primeiro."
+    exit 1
+fi
+
+# Verificar se usuário pode usar sudo
+if ! sudo -n true 2>/dev/null; then
+    log_info "Este script precisa de privilégios sudo para algumas operações."
+    log_info "Você pode ser solicitado a inserir sua senha sudo durante a execução."
+    
+    # Testar sudo
+    if ! sudo -v; then
+        log_error "Não foi possível obter privilégios sudo"
+        exit 1
+    fi
 fi
 
 log_info "Iniciando setup automatizado do servidor..."
+log_info "Executando como usuário: $(whoami)"
 
 # Obter IP do servidor
 SERVER_IP=$(get_server_ip)
@@ -126,19 +139,19 @@ if command_exists docker && command_exists docker-compose; then
     # Verificar se curl está instalado
     if ! command_exists curl; then
         log_info "Instalando curl..."
-        apt-get update -y
-        apt-get install -y curl net-tools
+        sudo apt-get update -y
+        sudo apt-get install -y curl net-tools
     fi
 else
     log_info "Docker não encontrado. Iniciando instalação..."
     
     # Atualizar repositórios
     log_info "Atualizando repositórios do sistema..."
-    apt-get update -y
+    sudo apt-get update -y
     
     # Instalar dependências
     log_info "Instalando dependências..."
-    apt-get install -y \
+    sudo apt-get install -y \
         ca-certificates \
         curl \
         gnupg \
@@ -149,39 +162,59 @@ else
     
     # Adicionar chave GPG oficial do Docker
     log_info "Adicionando chave GPG do Docker..."
-    mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     
     # Adicionar repositório do Docker
     log_info "Adicionando repositório do Docker..."
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     
     # Atualizar repositórios novamente
-    apt-get update -y
+    sudo apt-get update -y
     
     # Instalar Docker
     log_info "Instalando Docker..."
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     
     # Instalar Docker Compose standalone (para compatibilidade)
     log_info "Instalando Docker Compose standalone..."
-    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
     
     # Iniciar e habilitar Docker
     log_info "Iniciando serviço do Docker..."
-    systemctl start docker
-    systemctl enable docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
     
-    # Adicionar usuário atual ao grupo docker (se não for root)
-    if [[ "$SUDO_USER" ]]; then
-        usermod -aG docker $SUDO_USER
-        log_info "Usuário $SUDO_USER adicionado ao grupo docker"
-    fi
+    # Adicionar usuário atual ao grupo docker
+    log_info "Adicionando usuário $(whoami) ao grupo docker..."
+    sudo usermod -aG docker $(whoami)
+    log_success "Usuário $(whoami) adicionado ao grupo docker"
+    log_info "IMPORTANTE: Você precisa fazer logout e login novamente para que as permissões do grupo docker sejam aplicadas"
+    log_info "Ou execute 'newgrp docker' para aplicar as permissões na sessão atual"
     
     log_success "Docker instalado com sucesso!"
     docker --version
     docker-compose --version
+fi
+
+# Verificar se o usuário está no grupo docker
+log_info "Verificando permissões do Docker..."
+if groups $(whoami) | grep -q docker; then
+    log_success "Usuário $(whoami) já está no grupo docker"
+else
+    log_info "Adicionando usuário $(whoami) ao grupo docker..."
+    sudo usermod -aG docker $(whoami)
+    log_warning "IMPORTANTE: Você precisa executar 'newgrp docker' ou fazer logout/login para aplicar as permissões"
+    log_info "Aplicando permissões na sessão atual..."
+    # Aplicar permissões na sessão atual
+    exec sg docker "$0 $*"
+fi
+
+# Verificar se docker funciona sem sudo
+if ! docker ps >/dev/null 2>&1; then
+    log_warning "Docker ainda requer sudo. Tentando aplicar permissões..."
+    newgrp docker
 fi
 
 # =============================================================================
@@ -267,19 +300,19 @@ fi
 
 # Verificar se as portas estão abertas
 log_info "Verificando portas do Traefik..."
-if netstat -tuln | grep -q ":80 "; then
+if ss -tuln | grep -q ":80 " || netstat -tuln 2>/dev/null | grep -q ":80 "; then
     log_success "Porta 80 (HTTP) está aberta"
 else
     log_warning "Porta 80 não está disponível"
 fi
 
-if netstat -tuln | grep -q ":443 "; then
+if ss -tuln | grep -q ":443 " || netstat -tuln 2>/dev/null | grep -q ":443 "; then
     log_success "Porta 443 (HTTPS) está aberta"
 else
     log_warning "Porta 443 não está disponível"
 fi
 
-if netstat -tuln | grep -q ":8080 "; then
+if ss -tuln | grep -q ":8080 " || netstat -tuln 2>/dev/null | grep -q ":8080 "; then
     log_success "Porta 8080 (Dashboard) está aberta"
 else
     log_warning "Porta 8080 não está disponível"
@@ -405,22 +438,25 @@ echo "• IP do Servidor: $SERVER_IP"
 echo ""
 echo -e "${BLUE}📝 PRÓXIMOS PASSOS:${NC}"
 echo "----------------------------------------"
-echo "1. Configure seu DNS para apontar os domínios para $SERVER_IP:"
+echo "1. Se esta foi a primeira instalação do Docker, execute 'newgrp docker' ou faça logout/login"
+echo "2. Configure seu DNS para apontar os domínios para $SERVER_IP:"
 echo "   - webhook.bwserver.com.br → $SERVER_IP"
 echo "   - manager.bwserver.com.br → $SERVER_IP"
-echo "2. Aguarde alguns minutos para os certificados SSL serem gerados"
-echo "3. Acesse o Portainer e configure uma senha de administrador"
-echo "4. Teste o webhook usando: http://$SERVER_IP/src/test.php"
-echo "5. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
+echo "3. Aguarde alguns minutos para os certificados SSL serem gerados"
+echo "4. Acesse o Portainer e configure uma senha de administrador"
+echo "5. Teste o webhook usando: http://$SERVER_IP/src/test.php"
+echo "6. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
 
 echo ""
 echo -e "${BLUE}🔍 COMANDOS ÚTEIS:${NC}"
 echo "----------------------------------------"
+echo "• Executar este script: ./setup-server.sh (como usuário normal)"
 echo "• Ver logs do Traefik: docker-compose -f docker-compose-traefik.yml logs -f traefik"
 echo "• Ver logs do Portainer: docker-compose -f docker-compose-portainer.yml logs -f portainer"
 echo "• Ver logs do projeto: docker-compose logs -f automation-webhook"
 echo "• Reiniciar tudo: docker-compose down && docker-compose up -d"
 echo "• Reiniciar Portainer: docker-compose -f docker-compose-portainer.yml restart"
+echo "• Aplicar permissões Docker: newgrp docker"
 
 echo ""
 log_success "Setup automatizado concluído com sucesso! 🎉"

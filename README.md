@@ -4,11 +4,14 @@ Webhook para automação de criação de serviços Docker (N8N e Evolution API) 
 
 ## Funcionalidades
 
+- ✅ Sistema modular com templates para Traefik, Portainer, N8N e Evolution API
+- ✅ Orquestração via PHP após o projeto principal
 - ✅ Webhook HTTP para criação automática de containers
 - ✅ Suporte para N8N e Evolution API  
 - ✅ Gerenciamento automático de subdomínios via Traefik
 - ✅ Controle de recursos (CPU e Memória)
 - ✅ Interface de teste incluída
+- ✅ Sistema de status e diagnósticos
 
 ## Como usar
 
@@ -138,6 +141,31 @@ curl -X POST https://webhook.bwserver.com.br/index.php \
 Para ver logs do container:
 ```bash
 docker-compose logs -f automation-webhook
+```
+
+## Sistema de Templates e Orquestração
+
+O projeto agora usa um sistema modular onde:
+
+1. **setup-server.sh**: Instala Docker e inicia o projeto principal
+2. **PHP**: Orquestra os demais serviços usando templates
+3. **Templates**: Configurações prontas para Traefik, Portainer, N8N e Evolution API
+
+### Endpoints de Sistema
+
+- `GET /system-status.php` - Status dos serviços
+- `POST /system-init.php` - Inicializar sistema (Traefik + Portainer)
+
+### Solução de Problemas
+
+Se encontrar erro "permission denied" ao acessar Docker:
+
+```bash
+# Verificar status das permissões
+./check-docker-permissions.sh
+
+# Corrigir permissões (como root)
+sudo ./fix-docker-permissions.sh
 ```
 
 ## Limitações

@@ -177,6 +177,38 @@ docker-compose --version
 log_info "Verificando Docker Swarm..."
 docker swarm leave --force >/dev/null 2>&1 || true
 
+# Configurar permissões do socket Docker para PHP
+log_info "Configurando permissões do Docker socket..."
+if [ -S /var/run/docker.sock ]; then
+    # Dar permissões amplas para o socket (como EasyPanel faz)
+    chmod 666 /var/run/docker.sock
+    
+    # Verificar se grupo docker existe e adicionar www-data se necessário
+    if getent group docker > /dev/null 2>&1; then
+        # Adicionar www-data ao grupo docker se o usuário existir
+        if id "www-data" >/dev/null 2>&1; then
+            usermod -a -G docker www-data 2>/dev/null || true
+            log_info "Usuário www-data adicionado ao grupo docker"
+        fi
+    fi
+    
+    log_success "Permissões do Docker socket configuradas"
+else
+    log_warning "Socket Docker não encontrado em /var/run/docker.sock"
+fi
+
+# Garantir que o socket mantenha permissões após reinicialização do Docker
+log_info "Configurando persistência das permissões Docker..."
+if [ -d /etc/docker ]; then
+    cat > /etc/docker/daemon.json << 'EOF'
+{
+    "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"],
+    "api-cors-header": "*"
+}
+EOF
+    log_info "Configuração Docker daemon criada"
+fi
+
 # =============================================================================
 # 2. SUBIR PROJETO PRINCIPAL
 # =============================================================================
@@ -228,6 +260,12 @@ fi
 # 4. INICIALIZAR SISTEMA VIA PHP
 # =============================================================================
 log_info "Inicializando sistema (Traefik + Portainer) via PHP..."
+
+# Garantir permissões do socket antes da chamada PHP
+chmod 666 /var/run/docker.sock 2>/dev/null || true
+
+# Aguardar um pouco para o projeto ficar totalmente disponível
+sleep 5
 
 # Chamada para inicialização do sistema
 INIT_RESPONSE=$(curl -s -X POST http://localhost/src/system-init.php \

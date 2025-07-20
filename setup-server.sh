@@ -101,22 +101,28 @@ echo "             AUTOMATION WEBHOOK - SETUP AUTOMATIZADO"
 echo "============================================================================="
 echo -e "${NC}"
 
-# Verificar se sudo está disponível
-if ! command_exists sudo; then
-    log_error "Este script requer sudo para funcionar. Por favor, instale o sudo primeiro."
+# Verificar se está rodando como root (igual EasyPanel)
+if [ "$(id -u)" != "0" ]; then
+    echo "Error: you must be root to execute this script" >&2
     exit 1
 fi
 
-# Verificar se usuário pode usar sudo
-if ! sudo -n true 2>/dev/null; then
-    log_info "Este script precisa de privilégios sudo para algumas operações."
-    log_info "Você pode ser solicitado a inserir sua senha sudo durante a execução."
-    
-    # Testar sudo
-    if ! sudo -v; then
-        log_error "Não foi possível obter privilégios sudo"
-        exit 1
-    fi
+# Verificar se não está rodando dentro de um container (igual EasyPanel)
+if [ -f /.dockerenv ]; then
+    echo "Error: running inside a container is not supported" >&2
+    exit 1
+fi
+
+# Verificar se algo está rodando na porta 80 (igual EasyPanel)
+if command_exists lsof && lsof -i :80 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Warning: something is already running on port 80"
+    log_warning "Porta 80 já está em uso - continuando mesmo assim"
+fi
+
+# Verificar se algo está rodando na porta 443 (igual EasyPanel)
+if command_exists lsof && lsof -i :443 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Warning: something is already running on port 443"
+    log_warning "Porta 443 já está em uso - continuando mesmo assim"
 fi
 
 log_info "Iniciando setup automatizado do servidor..."
@@ -127,241 +133,52 @@ SERVER_IP=$(get_server_ip)
 log_info "IP do servidor detectado: $SERVER_IP"
 
 # =============================================================================
-# 1. INSTALAÇÃO DO DOCKER
+# 1. INSTALAÇÃO DO DOCKER (igual EasyPanel)
 # =============================================================================
 log_info "Verificando instalação do Docker..."
 
-if command_exists docker && command_exists docker-compose; then
-    log_success "Docker já está instalado"
-    docker --version
-    docker-compose --version
-    
-    # Verificar se curl está instalado
-    if ! command_exists curl; then
-        log_info "Instalando curl..."
-        sudo apt-get update -y
-        sudo apt-get install -y curl net-tools
+# Instalar lsof se não existir (usado pelo EasyPanel para verificar portas)
+if ! command_exists lsof; then
+    log_info "Instalando lsof..."
+    if command_exists apt-get; then
+        apt-get update -y && apt-get install -y lsof curl
+    elif command_exists yum; then
+        yum install -y lsof curl
+    elif command_exists apk; then
+        apk add --no-cache lsof curl
     fi
+fi
+
+if command_exists docker; then
+    log_success "Docker already installed"
 else
-    log_info "Docker não encontrado. Iniciando instalação..."
-    
-    # Atualizar repositórios
-    log_info "Atualizando repositórios do sistema..."
-    sudo apt-get update -y
-    
-    # Instalar dependências
-    log_info "Instalando dependências..."
-    sudo apt-get install -y \
-        ca-certificates \
-        curl \
-        gnupg \
-        lsb-release \
-        software-properties-common \
-        apt-transport-https \
-        net-tools
-    
-    # Adicionar chave GPG oficial do Docker
-    log_info "Adicionando chave GPG do Docker..."
-    sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    
-    # Adicionar repositório do Docker
-    log_info "Adicionando repositório do Docker..."
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
-    # Atualizar repositórios novamente
-    sudo apt-get update -y
-    
-    # Instalar Docker
-    log_info "Instalando Docker..."
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    
-    # Instalar Docker Compose standalone (para compatibilidade)
-    log_info "Instalando Docker Compose standalone..."
-    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
+    log_info "Installing Docker using official script (like EasyPanel)..."
+    curl -sSL https://get.docker.com | sh
     
     # Iniciar e habilitar Docker
     log_info "Iniciando serviço do Docker..."
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    
-    # Adicionar usuário atual ao grupo docker
-    log_info "Adicionando usuário $(whoami) ao grupo docker..."
-    sudo usermod -aG docker $(whoami)
-    log_success "Usuário $(whoami) adicionado ao grupo docker"
-    log_info "IMPORTANTE: Você precisa fazer logout e login novamente para que as permissões do grupo docker sejam aplicadas"
-    log_info "Ou execute 'newgrp docker' para aplicar as permissões na sessão atual"
+    systemctl start docker
+    systemctl enable docker
     
     log_success "Docker instalado com sucesso!"
-    docker --version
-    docker-compose --version
 fi
 
-# Verificar se o usuário está no grupo docker
-log_info "Verificando permissões do Docker..."
-if groups $(whoami) | grep -q docker; then
-    log_success "Usuário $(whoami) já está no grupo docker"
-else
-    log_info "Adicionando usuário $(whoami) ao grupo docker..."
-    sudo usermod -aG docker $(whoami)
-    log_warning "IMPORTANTE: Você precisa executar 'newgrp docker' ou fazer logout/login para aplicar as permissões"
-    log_info "Aplicando permissões na sessão atual..."
-    # Aplicar permissões na sessão atual
-    exec sg docker "$0 $*"
+# Instalar docker-compose se não existir
+if ! command_exists docker-compose; then
+    log_info "Instalando Docker Compose..."
+    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
 fi
 
-# Verificar se docker funciona sem sudo
-if ! docker ps >/dev/null 2>&1; then
-    log_warning "Docker ainda requer sudo. Tentando aplicar permissões..."
-    newgrp docker
-fi
+docker --version
+docker-compose --version
+
+# Garantir que não esteja em swarm mode (igual EasyPanel)
+log_info "Verificando Docker Swarm..."
+docker swarm leave --force >/dev/null 2>&1 || true
 
 # =============================================================================
-# 2. CONFIGURAÇÃO DA REDE TRAEFIK
-# =============================================================================
-log_info "Configurando rede do Traefik..."
-
-# Verificar se a rede já existe
-if docker network ls | grep -q "traefik"; then
-    log_warning "Rede 'traefik' já existe"
-else
-    log_info "Criando rede 'traefik'..."
-    docker network create traefik
-    log_success "Rede 'traefik' criada com sucesso!"
-fi
-
-# =============================================================================
-# 3. PREPARAR ARQUIVOS DE CONFIGURAÇÃO
-# =============================================================================
-log_info "Preparando arquivos de configuração..."
-
-# Verificar se acme.json existe e tem permissões corretas
-if [[ ! -f "acme.json" ]]; then
-    log_info "Criando arquivo acme.json..."
-    touch acme.json
-fi
-
-log_info "Configurando permissões do acme.json..."
-chmod 600 acme.json
-
-log_success "Arquivos de configuração preparados!"
-
-# =============================================================================
-# 4. SUBIR TRAEFIK
-# =============================================================================
-log_info "Iniciando Traefik..."
-
-# Parar containers existentes se estiverem rodando
-if docker ps -q --filter "name=traefik" | grep -q .; then
-    log_info "Parando container Traefik existente..."
-    docker-compose -f docker-compose-traefik.yml down
-fi
-
-# Subir Traefik
-log_info "Subindo Traefik com docker-compose..."
-docker-compose -f docker-compose-traefik.yml up -d
-
-log_success "Traefik iniciado!"
-
-# =============================================================================
-# 5. VERIFICAR TRAEFIK
-# =============================================================================
-log_info "Verificando se o Traefik está funcionando..."
-
-# Primeiro verificar se o container está rodando
-log_info "Verificando status do container Traefik..."
-if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "traefik.*Up"; then
-    log_success "Container Traefik está rodando"
-else
-    log_error "Container Traefik não está rodando. Verificando logs..."
-    docker-compose -f docker-compose-traefik.yml logs traefik
-    exit 1
-fi
-
-# Aguardar um pouco para o Traefik inicializar
-log_info "Aguardando inicialização do Traefik..."
-sleep 15
-
-# Aguardar Traefik ficar disponível (teste interno)
-log_info "Testando acesso ao Dashboard do Traefik..."
-if wait_for_service "http://localhost:8080/dashboard/" "Traefik Dashboard"; then
-    log_success "Traefik Dashboard disponível internamente"
-    log_success "Traefik Dashboard acessível em: http://$SERVER_IP:8080/dashboard/"
-else
-    log_warning "Dashboard não respondeu na URL /dashboard/, tentando /..."
-    if curl -s -f "http://localhost:8080/" > /dev/null 2>&1; then
-        log_success "Traefik API disponível em: http://$SERVER_IP:8080/"
-    else
-        log_warning "Dashboard não está respondendo. Verificando logs..."
-        docker-compose -f docker-compose-traefik.yml logs --tail=20 traefik
-    fi
-fi
-
-# Verificar se as portas estão abertas
-log_info "Verificando portas do Traefik..."
-if ss -tuln | grep -q ":80 " || netstat -tuln 2>/dev/null | grep -q ":80 "; then
-    log_success "Porta 80 (HTTP) está aberta"
-else
-    log_warning "Porta 80 não está disponível"
-fi
-
-if ss -tuln | grep -q ":443 " || netstat -tuln 2>/dev/null | grep -q ":443 "; then
-    log_success "Porta 443 (HTTPS) está aberta"
-else
-    log_warning "Porta 443 não está disponível"
-fi
-
-if ss -tuln | grep -q ":8080 " || netstat -tuln 2>/dev/null | grep -q ":8080 "; then
-    log_success "Porta 8080 (Dashboard) está aberta"
-else
-    log_warning "Porta 8080 não está disponível"
-fi
-
-# =============================================================================
-# 6. SUBIR PORTAINER
-# =============================================================================
-log_info "Iniciando Portainer (Gerenciador Docker)..."
-
-# Parar container existente se estiver rodando
-if docker ps -q --filter "name=portainer" | grep -q .; then
-    log_info "Parando container Portainer existente..."
-    docker-compose -f docker-compose-portainer.yml down
-fi
-
-# Subir Portainer
-log_info "Subindo Portainer com docker-compose..."
-docker-compose -f docker-compose-portainer.yml up -d
-
-log_success "Portainer iniciado!"
-
-# Verificar se Portainer está rodando
-log_info "Verificando status do container Portainer..."
-if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "portainer.*Up"; then
-    log_success "Container Portainer está rodando"
-else
-    log_warning "Container Portainer pode estar inicializando..."
-    docker-compose -f docker-compose-portainer.yml logs --tail=10 portainer
-fi
-
-# Aguardar um pouco para o Portainer inicializar
-log_info "Aguardando inicialização do Portainer..."
-sleep 10
-
-# Testar acesso ao Portainer
-log_info "Testando acesso ao Portainer..."
-if curl -s -f "http://localhost:9000/" > /dev/null 2>&1; then
-    log_success "Portainer está disponível em: http://$SERVER_IP:9000"
-    log_success "Portainer será acessível via HTTPS em: https://manager.bwserver.com.br"
-else
-    log_warning "Portainer ainda não está respondendo (pode levar alguns segundos)"
-fi
-
-# =============================================================================
-# 7. CONSTRUIR E SUBIR PROJETO PRINCIPAL
-# =============================================================================
-# =============================================================================
-# 7. CONSTRUIR E SUBIR PROJETO PRINCIPAL
+# 2. SUBIR PROJETO PRINCIPAL
 # =============================================================================
 log_info "Construindo e iniciando projeto principal..."
 
@@ -382,7 +199,7 @@ docker-compose up -d
 log_success "Projeto principal iniciado!"
 
 # =============================================================================
-# 8. VERIFICAR PROJETO PRINCIPAL
+# 3. VERIFICAR PROJETO PRINCIPAL
 # =============================================================================
 log_info "Verificando se o projeto está funcionando..."
 
@@ -408,7 +225,40 @@ else
 fi
 
 # =============================================================================
-# 9. RESUMO FINAL
+# 4. INICIALIZAR SISTEMA VIA PHP
+# =============================================================================
+log_info "Inicializando sistema (Traefik + Portainer) via PHP..."
+
+# Chamada para inicialização do sistema
+INIT_RESPONSE=$(curl -s -X POST http://localhost/src/system-init.php \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"action\": \"initialize\",
+        \"domain\": \"bwserver.com.br\",
+        \"email\": \"admin@bwserver.com.br\"
+    }" 2>/dev/null)
+
+if [ $? -eq 0 ] && echo "$INIT_RESPONSE" | grep -q '"success":true'; then
+    log_success "Sistema inicializado via PHP com sucesso!"
+    
+    # Extrair endpoints da resposta JSON se possível
+    TRAEFIK_URL=$(echo "$INIT_RESPONSE" | grep -o '"traefik":"[^"]*' | cut -d'"' -f4)
+    PORTAINER_URL=$(echo "$INIT_RESPONSE" | grep -o '"portainer":"[^"]*' | cut -d'"' -f4)
+    
+    if [ -n "$TRAEFIK_URL" ]; then
+        log_success "Traefik disponível em: $TRAEFIK_URL"
+    fi
+    
+    if [ -n "$PORTAINER_URL" ]; then
+        log_success "Portainer disponível em: $PORTAINER_URL"
+    fi
+else
+    log_warning "Inicialização via PHP falhou ou ainda não está disponível"
+    log_info "Você pode inicializar manualmente via: curl -X POST http://$SERVER_IP/src/system-init.php"
+fi
+
+# =============================================================================
+# 5. RESUMO FINAL
 # =============================================================================
 echo ""
 echo -e "${GREEN}"
@@ -417,7 +267,8 @@ echo "                           SETUP CONCLUÍDO!"
 echo "============================================================================="
 echo -e "${NC}"
 
-log_success "Todos os serviços foram configurados com sucesso!"
+log_success "Projeto principal configurado com sucesso!"
+log_success "Sistema (Traefik + Portainer) inicializado via PHP!"
 
 echo ""
 echo -e "${BLUE}📊 STATUS DOS SERVIÇOS:${NC}"
@@ -427,36 +278,36 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo -e "${BLUE}🌐 ENDPOINTS DISPONÍVEIS:${NC}"
 echo "----------------------------------------"
-echo "• Traefik Dashboard: http://$SERVER_IP:8080/dashboard/"
-echo "• Traefik API: http://$SERVER_IP:8080/"
-echo "• Portainer (Gerenciador): http://$SERVER_IP:9000"
-echo "• Portainer HTTPS: https://manager.bwserver.com.br"
 echo "• Webhook API: http://webhook.bwserver.com.br"
+echo "• Sistema Init: http://$SERVER_IP/src/system-init.php"
 echo "• Teste local: http://$SERVER_IP/src/test.php"
+echo "• Traefik Dashboard: http://$SERVER_IP:8080 (após inicialização)"
+echo "• Portainer: http://$SERVER_IP:9000 (após inicialização)"
 echo "• IP do Servidor: $SERVER_IP"
 
 echo ""
 echo -e "${BLUE}📝 PRÓXIMOS PASSOS:${NC}"
 echo "----------------------------------------"
-echo "1. Se esta foi a primeira instalação do Docker, execute 'newgrp docker' ou faça logout/login"
-echo "2. Configure seu DNS para apontar os domínios para $SERVER_IP:"
+echo "1. Configure seu DNS para apontar os domínios para $SERVER_IP:"
 echo "   - webhook.bwserver.com.br → $SERVER_IP"
-echo "   - manager.bwserver.com.br → $SERVER_IP"
+echo "   - traefik.bwserver.com.br → $SERVER_IP (após inicialização)"
+echo "   - manager.bwserver.com.br → $SERVER_IP (após inicialização)"
+echo "2. Se a inicialização via PHP falhou, execute:"
+echo "   curl -X POST http://$SERVER_IP/src/system-init.php -H 'Content-Type: application/json' -d '{\"action\":\"initialize\"}'"
 echo "3. Aguarde alguns minutos para os certificados SSL serem gerados"
 echo "4. Acesse o Portainer e configure uma senha de administrador"
 echo "5. Teste o webhook usando: http://$SERVER_IP/src/test.php"
-echo "6. Acesse o Traefik Dashboard em: http://$SERVER_IP:8080/dashboard/"
 
 echo ""
 echo -e "${BLUE}🔍 COMANDOS ÚTEIS:${NC}"
 echo "----------------------------------------"
-echo "• Executar este script: ./setup-server.sh (como usuário normal)"
-echo "• Ver logs do Traefik: docker-compose -f docker-compose-traefik.yml logs -f traefik"
-echo "• Ver logs do Portainer: docker-compose -f docker-compose-portainer.yml logs -f portainer"
+echo "• Executar este script: sudo ./setup-server.sh (como root)"
+echo "• Inicializar sistema: curl -X POST http://$SERVER_IP/src/system-init.php"
+echo "• Criar N8N: curl -X POST http://$SERVER_IP/src/system-init.php -d '{\"action\":\"create_n8n\",\"container_name\":\"n8n1\",\"subdomain\":\"n8n1.bwserver.com.br\"}'"
+echo "• Criar Evolution: curl -X POST http://$SERVER_IP/src/system-init.php -d '{\"action\":\"create_evolution\",\"container_name\":\"evo1\",\"subdomain\":\"evo1.bwserver.com.br\"}'"
+echo "• Listar serviços: curl -X POST http://$SERVER_IP/src/system-init.php -d '{\"action\":\"list_services\"}'"
 echo "• Ver logs do projeto: docker-compose logs -f automation-webhook"
-echo "• Reiniciar tudo: docker-compose down && docker-compose up -d"
-echo "• Reiniciar Portainer: docker-compose -f docker-compose-portainer.yml restart"
-echo "• Aplicar permissões Docker: newgrp docker"
+echo "• Reiniciar projeto: docker-compose down && docker-compose up -d"
 
 echo ""
 log_success "Setup automatizado concluído com sucesso! 🎉"

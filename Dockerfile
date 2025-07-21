@@ -58,7 +58,7 @@ COPY . .
 RUN chown -R www-data:www-data /var/www/html
 
 RUN mkdir -p /etc/automation-webhook/volumes \
-    && chown -R www-data:www-data /etc/automation-webhook/volumes
+    && chown -R www-data:www-data /etc/automation-webhook/volumes \
     && chmod -R 777 /etc/automation-webhook/volumes
 
 

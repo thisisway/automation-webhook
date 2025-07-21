@@ -16,7 +16,7 @@ services:
     user: "33:999"  # www-data:docker group
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.automation-webhook.rule=Host(`manager.bwserver.com.br`)"
+      - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`)"
       - "traefik.http.routers.automation-webhook.tls=true"
       - "traefik.http.routers.automation-webhook.tls.certresolver=letsencrypt"
       - "traefik.http.services.automation-webhook.loadbalancer.server.port=80"

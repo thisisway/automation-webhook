@@ -45,32 +45,75 @@ try {
                 $software = $input['software'] ?? null;
                 $client = $input['client'] ?? null;
 
-                $client = substr(trim(str_replace(' ','',strtolower($client))), 0, 15);
-
-                $id = uniqid();
-
-                $vcpu = $input['vcpus'] ?? 1;
-                $memory = $input['memory'] ?? 512; // Default to 512MB
-
-                $subdomain = $software.'-'.$client.'-'.$id;
-
-                if (!is_dir($volumeBase.$client)) {
-                    mkdir($volumeBase.$client, 0755, true);
+                // Validate required parameters
+                if (!$software || !$client) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Software and client parameters are required']);
+                    break;
                 }
 
-                mkdir($volumeBase.$client.'/n8n-'.$id, 0755, true);
-                $destinationPath = $volumeBase . $client . '/n8n-'.$id;
+                $client = substr(trim(str_replace(' ','',strtolower($client))), 0, 15);
+                $id = uniqid();
+                $vcpu = $input['vcpus'] ?? 1;
+                $memory = $input['memory'] ?? 512; // Default to 512MB
+                $subdomain = $software.'-'.$client.'-'.$id;
 
-                if($software === 'n8n')
-                {
-                    copy($templatePath, $destinationPath.'/n8n.yml');
+                // Create client directory if it doesn't exist
+                $clientDir = $volumeBase . $client;
+                if (!is_dir($clientDir)) {
+                    if (!mkdir($clientDir, 0755, true)) {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to create client directory: ' . $clientDir]);
+                        break;
+                    }
+                }
 
-                    $envTemplatePath = '../templates/n8n.env';
-                    $envContent = file_get_contents($envTemplatePath);
-                    $envContent = str_replace('{SUBDOMAIN}', $subdomain, $envContent);
-                    file_put_contents($destinationPath.'/.env', $envContent);
+                // Create software-specific directory
+                $destinationPath = $clientDir . '/' . $software . '-' . $id;
+                if (!mkdir($destinationPath, 0755, true)) {
+                    http_response_code(500);
+                    echo json_encode(['error' => 'Failed to create destination directory: ' . $destinationPath]);
+                    break;
+                }
+
+                if($software === 'n8n') {
+                    // Define template path
+                    $templatePath = '../templates/n8n.yml';
+                    
+                    // Check if template exists
+                    if (!file_exists($templatePath)) {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Template file not found: ' . $templatePath]);
+                        break;
+                    }
+                    
+                    // Copy template
+                    if (!copy($templatePath, $destinationPath . '/docker-compose.yml')) {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to copy template file']);
+                        break;
+                    }
+
+                    // Handle .env file
+                    $envTemplatePath = '../templates/n8n/.env';
+                    if (file_exists($envTemplatePath)) {
+                        $envContent = file_get_contents($envTemplatePath);
+                        $envContent = str_replace('{SUBDOMAIN}', $subdomain, $envContent);
+                        $envContent = str_replace('{CLIENT_NAME}', $client . '_' . $id, $envContent);
+                        $envContent = str_replace('DOMAIN=yourdomain.com', 'DOMAIN=' . ($_SERVER['HTTP_HOST'] ?? 'localhost'), $envContent);
+                        
+                        if (!file_put_contents($destinationPath . '/.env', $envContent)) {
+                            http_response_code(500);
+                            echo json_encode(['error' => 'Failed to create .env file']);
+                            break;
+                        }
+                    }
 
                     $result = $docker->createContainer($destinationPath);
+                } else {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Unsupported software: ' . $software]);
+                    break;
                 }
 
                 echo json_encode($result);

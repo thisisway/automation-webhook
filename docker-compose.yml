@@ -8,7 +8,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./:/var/www/html
     environment:
-      - APACHE_DOCUMENT_ROOT=/var/www/html/public
+      - APACHE_DOCUMENT_ROOT=/var/www/html/app
       - DOCKER_HOST=unix:///var/run/docker.sock
     networks:
       - traefik

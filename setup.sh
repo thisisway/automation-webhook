@@ -39,14 +39,20 @@ if command_exists docker; then
   echo "Docker already installed"
 else
   curl -sSL https://get.docker.com | sh
+  sudo usermod -aG docker $USER
 fi
 
-docker swarm leave --force 1> /dev/null 2> /dev/null || true
 
-# Add the user who invoked sudo to the docker group
-if [ -n "$SUDO_USER" ]; then
-    usermod -aG docker "$SUDO_USER"
-    echo "User $SUDO_USER added to docker group"
-else
-    echo "Warning: SUDO_USER not found, skipping docker group assignment"
+
+if command_exists docker; then
+  if docker ps -q --filter "name=automation-webhook" | grep -q .; then
+    echo "Automation webhook plataform is already running"
+  else
+    echo "Starting automation webhook plataform"
+    docker compose up -d
+  fi
 fi
+
+echo "Automation webhook plataform started successfully"
+
+

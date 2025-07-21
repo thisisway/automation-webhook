@@ -41,7 +41,8 @@ try {
                 $result = $docker->restartContainer($matches[1]);
                 echo json_encode($result);
             } elseif ($path === '/containers/create') {
-                $volumeBase = '/etc/automation-webhook/volumes/';
+                // Use a writable directory path
+                $volumeBase = '/var/www/html/volumes/';
                 $software = $input['software'] ?? null;
                 $client = $input['client'] ?? null;
 
@@ -57,6 +58,15 @@ try {
                 $vcpu = $input['vcpus'] ?? 1;
                 $memory = $input['memory'] ?? 512; // Default to 512MB
                 $subdomain = $software.'-'.$client.'-'.$id;
+
+                // Create base volumes directory if it doesn't exist
+                if (!is_dir($volumeBase)) {
+                    if (!mkdir($volumeBase, 0755, true)) {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Failed to create volumes directory']);
+                        break;
+                    }
+                }
 
                 // Create client directory if it doesn't exist
                 $clientDir = $volumeBase . $client;

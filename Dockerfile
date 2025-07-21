@@ -54,8 +54,7 @@ RUN if [ -f "composer.json" ]; then composer install --no-dev --optimize-autoloa
 # Copiar arquivos do projeto
 COPY . .
 
-RUN mkdir volumes \
-    && chown -R www-data:www-data /var/www/html/volumes \
+RUN chown -R www-data:www-data /var/www/html/volumes \
     && chmod -R 777 /var/www/html/volumes
 
 # Criar diretórios necessários e definir permissões corretas

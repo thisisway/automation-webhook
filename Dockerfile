@@ -54,12 +54,13 @@ RUN if [ -f "composer.json" ]; then composer install --no-dev --optimize-autoloa
 # Copiar arquivos do projeto
 COPY . .
 
-# Criar diretórios necessários e definir permissões corretas
-RUN chown -R www-data:www-data /var/www/html
+RUN mkdir volumes \
+    && chown -R www-data:www-data /var/www/html/volumes \
+    && chmod -R 777 /var/www/html/volumes
 
-RUN mkdir -p /etc/automation-webhook/volumes \
-    && chown -R www-data:www-data /etc/automation-webhook/volumes \
-    && chmod -R 777 /etc/automation-webhook/volumes
+# Criar diretórios necessários e definir permissões corretas
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 777 /var/www/html
 
 
 # Expor porta 80

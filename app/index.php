@@ -41,39 +41,36 @@ try {
                 $result = $docker->restartContainer($matches[1]);
                 echo json_encode($result);
             } elseif ($path === '/containers/create') {
+                $volumeBase = '/etc/automation-webhook/volumes/';
                 $software = $input['software'] ?? null;
                 $client = $input['client'] ?? null;
 
                 $client = substr(trim(str_replace(' ','',strtolower($client))), 0, 15);
 
+                $id = uniqid();
+
                 $vcpu = $input['vcpus'] ?? 1;
                 $memory = $input['memory'] ?? 512; // Default to 512MB
 
-                $subdomain = $software.'-'.$client.'-'.uniqid();
+                $subdomain = $software.'-'.$client.'-'.$id;
 
-                if (!is_dir('/etc/automation-webhook/volumes/'.$client)) {
-                    mkdir('/etc/automation-webhook/volumes/'.$client, 0755, true);
+                if (!is_dir($volumeBase.$client)) {
+                    mkdir($volumeBase.$client, 0755, true);
                 }
+
+                mkdir($volumeBase.$client.'/n8n-'.$id, 0755, true);
+                $destinationPath = $volumeBase . $client . '/n8n-'.$id;
 
                 if($software === 'n8n')
                 {
-                    $templatePath = '../templates/n8n.yml';
-                    $destinationPath = '/etc/automation-webhook/volumes/' . $client . '/n8n.yml';
-                    
-                    if (file_exists($templatePath)) {
-                        copy($templatePath, $destinationPath);
-                    }
+                    copy($templatePath, $destinationPath.'/n8n.yml');
 
                     $envTemplatePath = '../templates/n8n.env';
-                    $envDestinationPath = '/etc/automation-webhook/volumes/' . $client . '/.env';
+                    $envContent = file_get_contents($envTemplatePath);
+                    $envContent = str_replace('{SUBDOMAIN}', $subdomain, $envContent);
+                    file_put_contents($destinationPath.'/.env', $envContent);
 
-                    if (file_exists($envTemplatePath)) {
-                        $envContent = file_get_contents($envTemplatePath);
-                        $envContent = str_replace('{SUBDOMAIN}', $subdomain, $envContent);
-                        file_put_contents($envDestinationPath, $envContent);
-                    }
-
-                    $result = $docker->createContainer($software, $client, $vcpu, $memory, $subdomain);
+                    $result = $docker->createContainer($destinationPath);
                 }
 
                 echo json_encode($result);

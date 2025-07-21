@@ -50,9 +50,8 @@ class DockerManager {
     }
     
     // Criar container
-    public function createContainer($config, $name = null) {
-        $endpoint = '/containers/create' . ($name ? "?name={$name}" : '');
-        return $this->makeRequest('POST', $endpoint, $config);
+    public function createContainer($destinationPath) {
+        exec("cd {$destinationPath} && docker-compose up -d");
     }
     
     // Remover container

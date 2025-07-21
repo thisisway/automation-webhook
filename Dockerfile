@@ -57,7 +57,8 @@ COPY . .
 # Criar diretórios necessários e definir permissões corretas
 RUN chown -R www-data:www-data /var/www/html
 
-RUN chown -R www-data:www-data /etc/automation-webhook/volumes
+RUN mkdir -p /etc/automation-webhook/volumes \
+    && chown -R www-data:www-data /etc/automation-webhook/volumes
 
 
 # Expor porta 80

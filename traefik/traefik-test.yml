@@ -1,0 +1,44 @@
+# Traefik Configuration for Testing
+# Global Configuration
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# API and Dashboard
+api:
+  dashboard: true
+  debug: false
+  insecure: true
+
+# Entry Points
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+# Providers
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    watch: true
+    network: traefik
+
+# Certificate Resolvers (disabled for testing)
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       tlsChallenge: {}
+#       email: admin@bwserver.com.br
+#       storage: /acme.json
+#       caServer: https://acme-v02.api.letsencrypt.org/directory
+#       keyType: EC256
+
+# Logging
+log:
+  level: DEBUG
+  format: json
+
+# Access Logs
+accessLog:

@@ -1,0 +1,21 @@
+services:
+  n8n-{{UNIQUE_ID}}:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n-{{UNIQUE_ID}}
+    restart: unless-stopped
+    volumes:
+      - n8n_data_{{UNIQUE_ID}}:/home/node/.n8n
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n-{{UNIQUE_ID}}.rule=Host(`{{SUBDOMAIN}}.bwserver.com.br`)"
+      - "traefik.http.routers.n8n-{{UNIQUE_ID}}.entrypoints=web"
+      - "traefik.http.services.n8n-{{UNIQUE_ID}}.loadbalancer.server.port=5678"
+
+volumes:
+  n8n_data_{{UNIQUE_ID}}:
+
+networks:
+  traefik:
+    external: true

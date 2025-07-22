@@ -1,146 +1,81 @@
 <?php
-
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: POST, GET, DELETE, PUT, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-require_once 'docker.php';
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
 
-$docker = new DockerManager();
+require_once 'classes/ContainerManager.php';
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$path = str_replace('/app', '', $path); // Remove o prefixo /app
+
+$containerManager = new ContainerManager();
 
 try {
-    switch ($method) {
-        case 'GET':
-            if ($path === '/containers') {
-                $result = $docker->listContainers(true);
-                echo json_encode($result);
-            } elseif (preg_match('/\/containers\/(.+)\/logs/', $path, $matches)) {
-                $result = $docker->getContainerLogs($matches[1]);
-                echo json_encode($result);
-            } else {
-                echo json_encode([
-                    "status" => "success",
-                    "message" => "API is running"
-                ]);
+    switch ($path) {
+        case '/api/create':
+            if ($method !== 'POST') {
+                throw new Exception('Method not allowed', 405);
             }
-            break;
-            
-        case 'POST':
             $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (preg_match('/\/containers\/(.+)\/start/', $path, $matches)) {
-                $result = $docker->startContainer($matches[1]);
-                echo json_encode($result);
-            } elseif (preg_match('/\/containers\/(.+)\/stop/', $path, $matches)) {
-                $result = $docker->stopContainer($matches[1]);
-                echo json_encode($result);
-            } elseif (preg_match('/\/containers\/(.+)\/restart/', $path, $matches)) {
-                $result = $docker->restartContainer($matches[1]);
-                echo json_encode($result);
-            } elseif ($path === '/containers/create') {
-                // Use a writable directory path
-                $volumeBase = '/var/www/html/volumes/';
-                $software = $input['software'] ?? null;
-                $client = $input['client'] ?? null;
-
-                // Validate required parameters
-                if (!$software || !$client) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Software and client parameters are required']);
-                    break;
-                }
-
-                $client = substr(trim(str_replace(' ','',strtolower($client))), 0, 15);
-                $id = uniqid();
-                $vcpu = $input['vcpus'] ?? 1;
-                $memory = $input['memory'] ?? 512; // Default to 512MB
-                $subdomain = $software.'-'.$client.'-'.$id;
-
-                // Create base volumes directory if it doesn't exist
-                if (!is_dir($volumeBase)) {
-                    if (!mkdir($volumeBase, 0755, true)) {
-                        http_response_code(500);
-                        echo json_encode(['error' => 'Failed to create volumes directory']);
-                        break;
-                    }
-                }
-
-                // Create client directory if it doesn't exist
-                $clientDir = $volumeBase . $client;
-                if (!is_dir($clientDir)) {
-                    if (!mkdir($clientDir, 0755, true)) {
-                        http_response_code(500);
-                        echo json_encode(['error' => 'Failed to create client directory: ' . $clientDir]);
-                        break;
-                    }
-                }
-
-                // Create software-specific directory
-                $destinationPath = $clientDir . '/' . $software . '-' . $id;
-                if (!mkdir($destinationPath, 0755, true)) {
-                    http_response_code(500);
-                    echo json_encode(['error' => 'Failed to create destination directory: ' . $destinationPath]);
-                    break;
-                }
-
-                if($software === 'n8n') {
-                    // Define template path
-                    $templatePath = '../templates/n8n.yml';
-                    
-                    // Check if template exists
-                    if (!file_exists($templatePath)) {
-                        http_response_code(500);
-                        echo json_encode(['error' => 'Template file not found: ' . $templatePath]);
-                        break;
-                    }
-                    
-                    // Copy template
-                    if (!copy($templatePath, $destinationPath . '/docker-compose.yml')) {
-                        http_response_code(500);
-                        echo json_encode(['error' => 'Failed to copy template file']);
-                        break;
-                    }
-
-                    // Handle .env file
-                    $envTemplatePath = '../templates/n8n/.env';
-                    if (file_exists($envTemplatePath)) {
-                        $envContent = file_get_contents($envTemplatePath);
-                        $envContent = str_replace('{SUBDOMAIN}', $subdomain, $envContent);
-                        $envContent = str_replace('{CLIENT_NAME}', $client . '_' . $id, $envContent);
-                        $envContent = str_replace('DOMAIN=yourdomain.com', 'DOMAIN=' . ($_SERVER['HTTP_HOST'] ?? 'localhost'), $envContent);
-                        
-                        if (!file_put_contents($destinationPath . '/.env', $envContent)) {
-                            http_response_code(500);
-                            echo json_encode(['error' => 'Failed to create .env file']);
-                            break;
-                        }
-                    }
-
-                    $result = $docker->createContainer($destinationPath);
-                } else {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Unsupported software: ' . $software]);
-                    break;
-                }
-
-                echo json_encode($result);
-            } else {
-                http_response_code(400);
-                echo json_encode(['error' => 'Invalid endpoint']);
-            }
+            $result = $containerManager->createContainer($input);
             break;
-            
-        case 'DELETE':
-            if (preg_match('/\/containers\/(.+)/', $path, $matches)) {
-                $result = $docker->removeContainer($matches[1], $_GET['force'] ?? false);
-                echo json_encode($result);
+
+        case '/api/delete':
+            if ($method !== 'DELETE') {
+                throw new Exception('Method not allowed', 405);
             }
+            $input = json_decode(file_get_contents('php://input'), true);
+            $result = $containerManager->deleteContainer($input);
             break;
+
+        case '/api/status':
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed', 405);
+            }
+            $containerId = $_GET['containerId'] ?? null;
+            $result = $containerManager->getStatus($containerId);
+            break;
+
+        case '/api/list':
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed', 405);
+            }
+            $client = $_GET['client'] ?? null;
+            $result = $containerManager->listContainers($client);
+            break;
+
+        case '/':
+            $result = [
+                'status' => 'success',
+                'message' => 'Automation Webhook API',
+                'version' => '1.0.0',
+                'endpoints' => [
+                    'POST /api/create' => 'Create new container',
+                    'DELETE /api/delete' => 'Delete container',
+                    'GET /api/status' => 'Get container status',
+                    'GET /api/list' => 'List containers'
+                ]
+            ];
+            break;
+
+        default:
+            throw new Exception('Endpoint not found', 404);
     }
+
+    echo json_encode($result);
+
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    http_response_code($e->getCode() ?: 500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => $e->getMessage(),
+        'code' => $e->getCode()
+    ]);
 }

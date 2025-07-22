@@ -7,6 +7,9 @@
 Dockerfile*
 docker-compose*
 
+# Portainer data
+portainer_data/
+
 # Logs
 *.log
 

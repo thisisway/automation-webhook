@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Docker CLI
+# Instalar Docker CLI e Docker Compose
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y docker-ce-cli \
+    && apt-get install -y docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar extensões PHP necessárias
@@ -31,8 +31,8 @@ RUN docker-php-ext-install \
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Habilitar mod_rewrite do Apache
-RUN a2enmod rewrite
+# Habilitar mod_rewrite e mod_headers do Apache
+RUN a2enmod rewrite headers
 
 # Configurar Apache para usar o document root correto
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/app

@@ -5,14 +5,12 @@ class ContainerManager
     private $basePath;
     private $volumesPath;
     private $scriptsPath;
-    private $templatesPath;
 
     public function __construct()
     {
         $this->basePath = '/var/www/html';
         $this->volumesPath = $this->basePath . '/volumes';
         $this->scriptsPath = $this->basePath . '/app/scripts';
-        $this->templatesPath = $this->basePath . '/app/templates';
     }
 
     /**
@@ -34,14 +32,11 @@ class ContainerManager
         // Criar nome do subdomínio
         $subdomain = $this->createSubdomain($client, $software, $uniqueId);
         
-        // Criar estrutura de diretórios
+        // Criar estrutura de diretórios apenas para volumes
         $clientPath = $this->createClientDirectory($client, $uniqueId);
         
-        // Criar arquivos de configuração
-        $this->createConfigFiles($clientPath, $client, $software, $vcpu, $mem, $subdomain, $uniqueId);
-        
-        // Executar script de criação
-        $result = $this->executeScript('create', $clientPath, $software);
+        // Criar container diretamente com comando Docker
+        $result = $this->createContainerDirect($software, $vcpu, $mem, $subdomain, $uniqueId, $clientPath);
         
         if ($result['success']) {
             return [
@@ -80,8 +75,15 @@ class ContainerManager
             throw new Exception('Container not found', 404);
         }
 
-        // Executar script de remoção
-        $result = $this->executeScript('delete', $clientPath);
+        // Encontrar o nome do container baseado no ID
+        $containerName = $this->findContainerName($containerId);
+        
+        if (!$containerName) {
+            throw new Exception('Container not found or not running', 404);
+        }
+
+        // Executar comando de remoção direta
+        $result = $this->deleteContainerDirect($containerName);
         
         if ($result['success']) {
             // Remover diretório
@@ -100,18 +102,18 @@ class ContainerManager
     /**
      * Obtém status do container
      */
-    public function getStatus($containerId)
+    public function getStatus($containerName)
     {
-        if (!$containerId) {
-            throw new Exception('containerId is required', 400);
+        if (!$containerName) {
+            throw new Exception('containerName is required', 400);
         }
 
-        $result = $this->executeCommand("docker ps -q --filter name=" . escapeshellarg($containerId));
+        $result = $this->executeCommand("docker ps -q --filter name=" . escapeshellarg($containerName));
         $isRunning = !empty(trim($result['output']));
 
         $containerInfo = [];
         if ($isRunning) {
-            $inspectResult = $this->executeCommand("docker inspect " . escapeshellarg($containerId));
+            $inspectResult = $this->executeCommand("docker inspect " . escapeshellarg($containerName));
             if ($inspectResult['success'] && $inspectResult['output']) {
                 $containerData = json_decode($inspectResult['output'], true);
                 if ($containerData && isset($containerData[0])) {
@@ -128,7 +130,7 @@ class ContainerManager
 
         return [
             'status' => 'success',
-            'containerId' => $containerId,
+            'containerName' => $containerName,
             'running' => $isRunning,
             'info' => $containerInfo
         ];
@@ -152,17 +154,54 @@ class ContainerManager
                 $clientName = $parts[0];
                 $containerId = $parts[1];
                 
-                $configFile = $dir . '/docker-compose.yml';
-                if (file_exists($configFile)) {
-                    $config = file_get_contents($configFile);
-                    // Extrair informações básicas do docker-compose
-                    preg_match('/traefik\.http\.routers\..*\.rule=Host\(`([^`]+)`\)/', $config, $matches);
-                    $domain = $matches[1] ?? 'unknown';
-                    
-                    $status = $this->getStatus($containerId);
+                // Buscar container pelo nome diretamente
+                $containerName = null;
+                $domain = 'unknown';
+                
+                // Tentar encontrar container N8N
+                $n8nName = 'n8n-' . $containerId;
+                $n8nResult = $this->executeCommand("docker inspect " . escapeshellarg($n8nName) . " 2>/dev/null");
+                if ($n8nResult['success']) {
+                    $containerName = $n8nName;
+                    // Extrair domínio das labels do container
+                    $inspectData = json_decode($n8nResult['output'], true);
+                    if ($inspectData && isset($inspectData[0]['Config']['Labels'])) {
+                        foreach ($inspectData[0]['Config']['Labels'] as $label => $value) {
+                            if (strpos($label, 'traefik.http.routers.') === 0 && strpos($label, '.rule') !== false) {
+                                if (preg_match('/Host\(`([^`]+)`\)/', $value, $matches)) {
+                                    $domain = $matches[1];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Tentar encontrar container EvoAPI
+                    $evoName = 'evoapi-' . $containerId;
+                    $evoResult = $this->executeCommand("docker inspect " . escapeshellarg($evoName) . " 2>/dev/null");
+                    if ($evoResult['success']) {
+                        $containerName = $evoName;
+                        // Extrair domínio das labels do container
+                        $inspectData = json_decode($evoResult['output'], true);
+                        if ($inspectData && isset($inspectData[0]['Config']['Labels'])) {
+                            foreach ($inspectData[0]['Config']['Labels'] as $label => $value) {
+                                if (strpos($label, 'traefik.http.routers.') === 0 && strpos($label, '.rule') !== false) {
+                                    if (preg_match('/Host\(`([^`]+)`\)/', $value, $matches)) {
+                                        $domain = $matches[1];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if ($containerName) {
+                    $status = $this->getStatus($containerName);
                     
                     $containers[] = [
                         'containerId' => $containerId,
+                        'containerName' => $containerName,
                         'client' => $clientName,
                         'domain' => $domain,
                         'running' => $status['running'],
@@ -250,40 +289,155 @@ class ContainerManager
     }
 
     /**
-     * Cria arquivos de configuração
+     * Cria container diretamente com comandos Docker
      */
-    private function createConfigFiles($clientPath, $client, $software, $vcpu, $mem, $subdomain, $uniqueId)
+    private function createContainerDirect($software, $vcpu, $mem, $subdomain, $uniqueId, $clientPath)
     {
-        // Criar docker-compose.yml
-        $template = file_get_contents($this->templatesPath . '/' . $software . '/docker-compose.yml');
-        if (!$template) {
-            throw new Exception("Template for $software not found", 500);
-        }
+        $containerName = $software . '-' . $uniqueId;
+        $domain = $subdomain . '.bwserver.com.br';
         
-        $template = str_replace('{{CLIENT}}', $client, $template);
-        $template = str_replace('{{UNIQUE_ID}}', $uniqueId, $template);
-        $template = str_replace('{{SUBDOMAIN}}', $subdomain, $template);
-        $template = str_replace('{{VCPU}}', $vcpu, $template);
-        $template = str_replace('{{MEMORY}}', $mem . 'm', $template);
-        
-        file_put_contents($clientPath . '/docker-compose.yml', $template);
-        
-        // Criar arquivo .env se o template existir
-        $envTemplate = $this->templatesPath . '/' . $software . '/.env';
-        if (file_exists($envTemplate)) {
-            $envContent = file_get_contents($envTemplate);
-            $envContent = str_replace('{{CLIENT}}', $client, $envContent);
-            $envContent = str_replace('{{UNIQUE_ID}}', $uniqueId, $envContent);
-            $envContent = str_replace('{{SUBDOMAIN}}', $subdomain, $envContent);
-            
-            file_put_contents($clientPath . '/.env', $envContent);
-        }
-        
-        // Criar diretórios de dados se necessário
+        // Criar diretórios de dados necessários
         $dataDir = $clientPath . '/data';
         if (!file_exists($dataDir)) {
             mkdir($dataDir, 0755, true);
         }
+        
+        if ($software === 'n8n') {
+            return $this->createN8nContainer($containerName, $domain, $clientPath, $vcpu, $mem);
+        } elseif ($software === 'evoapi') {
+            return $this->createEvoApiContainer($containerName, $domain, $clientPath, $vcpu, $mem);
+        }
+        
+        return ['success' => false, 'error' => 'Software not supported'];
+    }
+    
+    /**
+     * Cria container N8N
+     */
+    private function createN8nContainer($containerName, $domain, $clientPath, $vcpu, $mem)
+    {
+        // Nome do volume Docker
+        $volumeName = "n8n_data_" . $containerName;
+
+        // Cria o volume se não existir
+        $this->executeCommand("docker volume create " . escapeshellarg($volumeName));
+
+        // Debug the domain value - utiliza o diretório do container
+        $logFile = $this->basePath . '/volumes/debug_n8n_domain.log';
+        file_put_contents($logFile, "Container: $containerName, Domain: $domain\n", FILE_APPEND);
+        
+        $domainRule = 'Host(`' . $domain . '`)';
+        
+        $command = "docker run -d " .
+                   "--name " . escapeshellarg($containerName) . " " .
+                   "--restart unless-stopped " .
+                   "-v " . escapeshellarg($volumeName) . ":/home/node/.n8n " .
+                   "--network traefik " .
+                   "--label traefik.enable=true " .
+                   "--label " . escapeshellarg("traefik.http.routers." . $containerName . ".rule=" . $domainRule) . " " .
+                   "--label " . escapeshellarg("traefik.http.routers." . $containerName . ".entrypoints=web") . " " .
+                   "--label " . escapeshellarg("traefik.http.services." . $containerName . ".loadbalancer.server.port=5678") . " " .
+                   "docker.n8n.io/n8nio/n8n";
+        
+        return $this->executeCommand($command);
+    }
+    
+    /**
+     * Cria container Evolution API
+     */
+    private function createEvoApiContainer($containerName, $domain, $clientPath, $vcpu, $mem)
+    {
+        // Criar subdiretórios específicos do Evolution API
+        $instancesDir = $clientPath . '/data/evolution_instances';
+        $storeDir = $clientPath . '/data/evolution_store';
+        
+        if (!file_exists($instancesDir)) {
+            mkdir($instancesDir, 0755, true);
+        }
+        if (!file_exists($storeDir)) {
+            mkdir($storeDir, 0755, true);
+        }
+        
+        $command = "docker run -d " .
+                   "--name " . escapeshellarg($containerName) . " " .
+                   "--restart unless-stopped " .
+                   "--cpus=" . $vcpu . " " .
+                   "--memory=" . $mem . "m " .
+                   "-v " . escapeshellarg($instancesDir) . ":/evolution/instances " .
+                   "-v " . escapeshellarg($storeDir) . ":/evolution/store " .
+                   "--network traefik " .
+                   "-e SERVER_TYPE=http " .
+                   "-e SERVER_PORT=8080 " .
+                   "-e CORS_ORIGIN=* " .
+                   "-e CORS_METHODS=POST,GET,PUT,DELETE " .
+                   "-e CORS_CREDENTIALS=true " .
+                   "-e LOG_LEVEL=ERROR " .
+                   "-e LOG_COLOR=true " .
+                   "-e LOG_BAILEYS=error " .
+                   "-e DEL_INSTANCE=false " .
+                   "-e PROVIDER_ENABLED=false " .
+                   "-e DATABASE_ENABLED=false " .
+                   "-e REDIS_ENABLED=false " .
+                   "-e RABBITMQ_ENABLED=false " .
+                   "-e SQS_ENABLED=false " .
+                   "-e WEBSOCKET_ENABLED=false " .
+                   "-e WEBSOCKET_GLOBAL_EVENTS=false " .
+                   "-e CONFIG_SESSION_PHONE_CLIENT=\"Evolution API\" " .
+                   "-e CONFIG_SESSION_PHONE_NAME=Chrome " .
+                   "-e QRCODE_LIMIT=30 " .
+                   "-e AUTHENTICATION_TYPE=apikey " .
+                   "-e AUTHENTICATION_API_KEY=429683C4C977415CAAFCCE10F7D57E11 " .
+                   "-e AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true " .
+                   "-e LANGUAGE=pt-BR " .
+                   "--label traefik.enable=true " .
+                   "--label \"traefik.http.routers." . $containerName . ".rule=Host(\`" . $domain . "\`)\" " .
+                   "--label traefik.http.routers." . $containerName . ".entrypoints=web " .
+                   "--label traefik.http.services." . $containerName . ".loadbalancer.server.port=8080 " .
+                   "atendai/evolution-api:latest";
+        
+        return $this->executeCommand($command);
+    }
+    
+    /**
+     * Deleta container diretamente
+     */
+    private function deleteContainerDirect($containerName)
+    {
+        // Primeiro tenta parar o container se estiver rodando
+        $stopCommand = "docker stop " . escapeshellarg($containerName) . " 2>/dev/null || true";
+        $this->executeCommand($stopCommand);
+        
+        // Remove o container
+        $removeCommand = "docker rm -f " . escapeshellarg($containerName) . " 2>/dev/null || true";
+        $result = $this->executeCommand($removeCommand);
+        
+        // Limpar volumes órfãos relacionados (opcional)
+        $pruneCommand = "docker volume prune -f 2>/dev/null || true";
+        $this->executeCommand($pruneCommand);
+        
+        return $result;
+    }
+    
+    /**
+     * Encontra o nome do container baseado no ID único
+     */
+    private function findContainerName($containerId)
+    {
+        // Tentar encontrar container N8N
+        $n8nName = 'n8n-' . $containerId;
+        $n8nResult = $this->executeCommand("docker ps -q --filter name=" . escapeshellarg($n8nName));
+        if (!empty(trim($n8nResult['output']))) {
+            return $n8nName;
+        }
+        
+        // Tentar encontrar container EvoAPI
+        $evoName = 'evoapi-' . $containerId;
+        $evoResult = $this->executeCommand("docker ps -q --filter name=" . escapeshellarg($evoName));
+        if (!empty(trim($evoResult['output']))) {
+            return $evoName;
+        }
+        
+        return null;
     }
 
     /**

@@ -54,7 +54,7 @@ RUN if [ -f "composer.json" ]; then composer install --no-dev --optimize-autoloa
 # Copiar arquivos do projeto
 COPY . .
 
-RUN groupadd -g 990 docker && usermod -aG docker www-data
+RUN groupadd -g 1001 docker && usermod -aG docker www-data
 
 RUN chown -R www-data:www-data /var/www/html/volumes \
     && chmod -R 777 /var/www/html/volumes

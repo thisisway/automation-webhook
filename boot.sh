@@ -13,6 +13,23 @@ check_container() {
     fi
 }
 
+# Função para verificar se um container existe (rodando ou parado)
+container_exists() {
+    local container_name=$1
+    if docker ps -a --format "table {{.Names}}" | grep -q "^${container_name}$"; then
+        return 0  # Container existe
+    else
+        return 1  # Container não existe
+    fi
+}
+
+# Função para iniciar um container existente
+start_container() {
+    local container_name=$1
+    echo "🔄 Iniciando container existente: $container_name"
+    docker start "$container_name"
+}
+
 # Função para verificar se uma rede existe
 check_network() {
     local network_name=$1
@@ -65,61 +82,75 @@ fi
 
 # Verificar e subir Traefik
 if ! check_container "traefik"; then
-    echo "🚀 Iniciando Traefik..."
-    
-    # Iniciar container Traefik
-    docker run -d \
-        --name traefik \
-        --restart unless-stopped \
-        -p 80:80 \
-        -p 443:443 \
-        -p 8080:8080 \
-        -v /var/run/docker.sock:/var/run/docker.sock:ro \
-        --network traefik \
-        --label "traefik.enable=true" \
-        --label "traefik.http.routers.dashboard.rule=Host(\`traefik.bwserver.com.br\`) || Host(\`traefik.localhost\`)" \
-        --label "traefik.http.routers.dashboard.entrypoints=web" \
-        --label "traefik.http.routers.dashboard.service=api@internal" \
-        --security-opt no-new-privileges:true \
-        traefik:v3.0 \
-        --api.dashboard=true \
-        --api.insecure=true \
-        --entrypoints.web.address=:80 \
-        --providers.docker=true \
-        --providers.docker.endpoint=unix:///var/run/docker.sock \
-        --providers.docker.exposedbydefault=false \
-        --log.level=DEBUG
-    
-    echo "✅ Traefik iniciado"
+    if container_exists "traefik"; then
+        # Container existe mas está parado, vamos iniciá-lo
+        start_container "traefik"
+        echo "✅ Traefik iniciado"
+    else
+        # Container não existe, vamos criá-lo
+        echo "🚀 Criando e iniciando Traefik..."
+        
+        # Iniciar container Traefik
+        docker run -d \
+            --name traefik \
+            --restart unless-stopped \
+            -p 80:80 \
+            -p 443:443 \
+            -p 8080:8080 \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            --network traefik \
+            --label "traefik.enable=true" \
+            --label "traefik.http.routers.dashboard.rule=Host(\`traefik.bwserver.com.br\`) || Host(\`traefik.localhost\`)" \
+            --label "traefik.http.routers.dashboard.entrypoints=web" \
+            --label "traefik.http.routers.dashboard.service=api@internal" \
+            --security-opt no-new-privileges:true \
+            traefik:v3.0 \
+            --api.dashboard=true \
+            --api.insecure=true \
+            --entrypoints.web.address=:80 \
+            --providers.docker=true \
+            --providers.docker.endpoint=unix:///var/run/docker.sock \
+            --providers.docker.exposedbydefault=false \
+            --log.level=DEBUG
+        
+        echo "✅ Traefik criado e iniciado"
+    fi
 else
     echo "✅ Traefik já está rodando"
 fi
 
 # Verificar e subir Portainer
 if ! check_container "portainer"; then
-    echo "🚀 Iniciando Portainer..."
-    
-    # Criar volume para dados do Portainer
-    if ! docker volume ls --format "{{.Name}}" | grep -q "^portainer_data$"; then
-        docker volume create portainer_data
-        echo "✅ Volume portainer_data criado"
+    if container_exists "portainer"; then
+        # Container existe mas está parado, vamos iniciá-lo
+        start_container "portainer"
+        echo "✅ Portainer iniciado"
+    else
+        # Container não existe, vamos criá-lo
+        echo "🚀 Criando e iniciando Portainer..."
+        
+        # Criar volume para dados do Portainer
+        if ! docker volume ls --format "{{.Name}}" | grep -q "^portainer_data$"; then
+            docker volume create portainer_data
+            echo "✅ Volume portainer_data criado"
+        fi
+        
+        # Iniciar container Portainer
+        docker run -d \
+            --name portainer \
+            --restart unless-stopped \
+            -p 9000:9000 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v portainer_data:/data \
+            --network traefik \
+            --label "traefik.enable=true" \
+            --label "traefik.http.routers.portainer.rule=Host(\`portainer.bwserver.com.br\`) || Host(\`portainer.localhost\`)" \
+            --label "traefik.http.routers.portainer.entrypoints=web" \
+            --label "traefik.http.services.portainer.loadbalancer.server.port=9000" \
+            portainer/portainer-ce:latest
+        
+        echo "✅ Portainer criado e iniciado"
     fi
-    
-    # Iniciar container Portainer
-    docker run -d \
-        --name portainer \
-        --restart unless-stopped \
-        -p 9000:9000 \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v portainer_data:/data \
-        --network traefik \
-        --label "traefik.enable=true" \
-        --label "traefik.http.routers.portainer.rule=Host(\`portainer.bwserver.com.br\`) || Host(\`portainer.localhost\`)" \
-        --label "traefik.http.routers.portainer.entrypoints=web" \
-        --label "traefik.http.services.portainer.loadbalancer.server.port=9000" \
-        portainer/portainer-ce:latest
-    
-    echo "✅ Portainer iniciado"
 else
     echo "✅ Portainer já está rodando"
 fi

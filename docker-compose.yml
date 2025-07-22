@@ -13,7 +13,7 @@ services:
     networks:
       - traefik
     privileged: false
-    user: "33:1001"  # www-data:docker group
+    user: "33:990"  # www-data:docker group
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`) || Host(`localhost`)"

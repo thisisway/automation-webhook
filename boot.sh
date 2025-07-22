@@ -67,38 +67,6 @@ fi
 if ! check_container "traefik"; then
     echo "🚀 Iniciando Traefik..."
     
-    # Criar diretório traefik se não existir
-    mkdir -p /var/www/html/traefik
-    
-    # Criar arquivo de configuração do Traefik se não existir
-    if [ ! -f "/var/www/html/traefik/traefik.yml" ]; then
-        cat > /var/www/html/traefik/traefik.yml << 'EOF'
-api:
-  dashboard: true
-  insecure: true
-
-entryPoints:
-  web:
-    address: ":80"
-
-providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-
-log:
-  level: DEBUG
-EOF
-        echo "✅ Arquivo traefik.yml criado"
-    fi
-    
-    # Criar arquivo acme.json se não existir
-    if [ ! -f "/var/www/html/traefik/acme.json" ]; then
-        touch /var/www/html/traefik/acme.json
-        chmod 600 /var/www/html/traefik/acme.json
-        echo "✅ Arquivo acme.json criado"
-    fi
-    
     # Iniciar container Traefik
     docker run -d \
         --name traefik \
@@ -107,17 +75,20 @@ EOF
         -p 443:443 \
         -p 8080:8080 \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
-        -v /var/www/html/traefik/traefik.yml:/traefik.yml:ro \
-        -v /var/www/html/traefik/acme.json:/acme.json \
         --network traefik \
         --label "traefik.enable=true" \
         --label "traefik.http.routers.dashboard.rule=Host(\`traefik.bwserver.com.br\`) || Host(\`traefik.localhost\`)" \
         --label "traefik.http.routers.dashboard.entrypoints=web" \
         --label "traefik.http.routers.dashboard.service=api@internal" \
-        -e TRAEFIK_LOG_LEVEL=INFO \
         --security-opt no-new-privileges:true \
         traefik:v3.0 \
-        --configfile=/traefik.yml
+        --api.dashboard=true \
+        --api.insecure=true \
+        --entrypoints.web.address=:80 \
+        --providers.docker=true \
+        --providers.docker.endpoint=unix:///var/run/docker.sock \
+        --providers.docker.exposedbydefault=false \
+        --log.level=DEBUG
     
     echo "✅ Traefik iniciado"
 else

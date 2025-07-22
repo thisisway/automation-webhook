@@ -1,77 +1,15 @@
-# Traefik Configuration for Production
-# Global Configuration
-global:
-  checkNewVersion: false
-  sendAnonymousUsage: false
-
-# API and Dashboard
 api:
   dashboard: true
-  debug: false
-  insecure: false
+  insecure: true
 
-# Entry Points
 entryPoints:
   web:
     address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
-          permanent: true
-  websecure:
-    address: ":443"
 
-# Providers
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-    watch: true
-    network: traefik
 
-# Certificate Resolvers
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      tlsChallenge: {}
-      email: admin@bwserver.com.br  # Substitua pelo seu email
-      storage: /acme.json
-      caServer: https://acme-v02.api.letsencrypt.org/directory  # Produção
-      keyType: EC256
-
-# Logging
 log:
-  level: INFO
-  format: json
-
-# Access Logs
-accessLog:
-  format: json
-  fields:
-    headers:
-      defaultMode: drop
-      names:
-        User-Agent: keep
-        Authorization: drop
-        Content-Type: keep
-
-# Metrics (opcional - para monitoramento)
-metrics:
-  prometheus:
-    addEntryPointsLabels: true
-    addServicesLabels: true
-
-# Security Headers (opcional)
-# middlewares:
-#   security-headers:
-#     headers:
-#       frameDeny: true
-#       sslRedirect: true
-#       browserXssFilter: true
-#       contentTypeNosniff: true
-#       forceSTSHeader: true
-#       stsIncludeSubdomains: true
-#       stsPreload: true
-#       stsSeconds: 31536000
+  level: DEBUG

@@ -107,7 +107,7 @@ EOF
         -p 443:443 \
         -p 8080:8080 \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
-        -v /var/www/html/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
+        -v /var/www/html/traefik/traefik.yml:/traefik.yml:ro \
         -v /var/www/html/traefik/acme.json:/acme.json \
         --network traefik \
         --label "traefik.enable=true" \
@@ -116,7 +116,8 @@ EOF
         --label "traefik.http.routers.dashboard.service=api@internal" \
         -e TRAEFIK_LOG_LEVEL=INFO \
         --security-opt no-new-privileges:true \
-        traefik:v3.0
+        traefik:v3.0 \
+        --configfile=/traefik.yml
     
     echo "✅ Traefik iniciado"
 else

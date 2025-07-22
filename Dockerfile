@@ -59,13 +59,20 @@ RUN groupadd -g 990 docker && usermod -aG docker www-data
 RUN chown -R www-data:www-data /var/www/html/volumes \
     && chmod -R 777 /var/www/html/volumes
 
+# Copiar script de boot
+COPY boot.sh /usr/local/bin/boot.sh
+RUN chmod +x /usr/local/bin/boot.sh
+
 # Criar diretórios necessários e definir permissões corretas
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 777 /var/www/html
 
-
 # Expor porta 80
 EXPOSE 80
 
-# Comando para iniciar o Apache
-CMD ["apache2-foreground"]
+# Script de inicialização que executa o boot e depois o Apache
+RUN echo '#!/bin/bash\n/usr/local/bin/boot.sh &\nexec apache2-foreground' > /usr/local/bin/start.sh \
+    && chmod +x /usr/local/bin/start.sh
+
+# Comando para iniciar o sistema
+CMD ["/usr/local/bin/start.sh"]

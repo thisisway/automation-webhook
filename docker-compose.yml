@@ -4,64 +4,22 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./volumes:/etc/automation-webhook/volumes
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./volumes:/var/www/html/volumes
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./:/var/www/html
     environment:
       - APACHE_DOCUMENT_ROOT=/var/www/html/app
       - DOCKER_HOST=unix:///var/run/docker.sock
     networks:
       - traefik
-    privileged: false
-    user: "33:990"  # www-data:docker group
+    privileged: true
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`) || Host(`localhost`)"
       - "traefik.http.routers.automation-webhook.entrypoints=web"
       - "traefik.http.services.automation-webhook.loadbalancer.server.port=80"
     restart: unless-stopped
-    depends_on:
-      - traefik
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik/acme.json:/acme.json:ro
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.bwserver.com.br`) || Host(`traefik.localhost`)"
-      - "traefik.http.routers.dashboard.entrypoints=web"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      # - "traefik.http.middlewares.auth.basicauth.users=admin:$apr1$Ud6F0kKu$SlTIBkNtSEZWL3IpEW7co/"
-    environment:
-      - TRAEFIK_LOG_LEVEL=INFO
-    security_opt:
-      - no-new-privileges:true
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./portainer_data:/data
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.bwserver.com.br`) || Host(`portainer.localhost`)"
-      - "traefik.http.routers.portainer.entrypoints=web"
-      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
 networks:
   traefik:
     external: true

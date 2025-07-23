@@ -18,6 +18,85 @@ class ContainerManager
     }
 
     /**
+     * Detecta o UID e GID corretos para Docker
+     */
+    private function getDockerUserInfo()
+    {
+        // Detectar o usuário atual que executa o PHP
+        $currentUser = posix_getpwuid(posix_geteuid());
+        $currentGroup = posix_getgrgid(posix_getegid());
+        
+        // Tentar detectar o grupo docker
+        $dockerGroupInfo = null;
+        $dockerGroupResult = $this->executeCommand("getent group docker 2>/dev/null");
+        if ($dockerGroupResult['success'] && !empty($dockerGroupResult['output'])) {
+            $dockerGroupParts = explode(':', trim($dockerGroupResult['output']));
+            if (count($dockerGroupParts) >= 3) {
+                $dockerGroupInfo = [
+                    'name' => $dockerGroupParts[0],
+                    'gid' => (int)$dockerGroupParts[2]
+                ];
+            }
+        }
+        
+        // Detectar o socket do Docker e suas permissões
+        $dockerSocketInfo = null;
+        $dockerSocketResult = $this->executeCommand("ls -la /var/run/docker.sock 2>/dev/null");
+        if ($dockerSocketResult['success'] && !empty($dockerSocketResult['output'])) {
+            // Formato: srw-rw---- 1 root docker 0 data /var/run/docker.sock
+            $socketParts = preg_split('/\s+/', trim($dockerSocketResult['output']));
+            if (count($socketParts) >= 4) {
+                $dockerSocketInfo = [
+                    'owner' => $socketParts[2],
+                    'group' => $socketParts[3]
+                ];
+            }
+        }
+        
+        // Determinar o melhor UID/GID para usar
+        $targetUid = $currentUser['uid'] ?? 33; // 33 é www-data padrão
+        $targetGid = $dockerGroupInfo['gid'] ?? $currentGroup['gid'] ?? 33;
+        
+        // Se o usuário atual é www-data e existe grupo docker, usar GID do docker
+        if ($currentUser['name'] === 'www-data' && $dockerGroupInfo) {
+            $targetGid = $dockerGroupInfo['gid'];
+        }
+        
+        return [
+            'uid' => $targetUid,
+            'gid' => $targetGid,
+            'user' => $currentUser['name'] ?? 'www-data',
+            'docker_group' => $dockerGroupInfo['name'] ?? 'docker',
+            'docker_gid' => $dockerGroupInfo['gid'] ?? null,
+            'socket_info' => $dockerSocketInfo
+        ];
+    }
+
+    /**
+     * Aplica permissões corretas baseadas no ambiente
+     */
+    private function applyCorrectPermissions($path, $forContainer = false)
+    {
+        $userInfo = $this->getDockerUserInfo();
+        
+        // Sempre aplicar permissões 777 primeiro
+        $this->executeCommand("chmod -R 777 " . escapeshellarg($path));
+        
+        if ($forContainer) {
+            // Para containers, usar UID 1000 (usuário padrão dos containers) 
+            // mas manter o GID do Docker para acesso ao socket
+            $targetUid = 1000;
+            $targetGid = $userInfo['docker_gid'] ?? $userInfo['gid'];
+            $this->executeCommand("chown -R {$targetUid}:{$targetGid} " . escapeshellarg($path));
+        } else {
+            // Para diretórios base, usar o usuário atual
+            $this->executeCommand("chown -R {$userInfo['uid']}:{$userInfo['gid']} " . escapeshellarg($path));
+        }
+        
+        return $userInfo;
+    }
+
+    /**
      * Garante que os diretórios base existam
      */
     private function ensureBaseDirectories()
@@ -25,16 +104,13 @@ class ContainerManager
         // Criar diretório interno se não existir
         if (!file_exists($this->volumesPath)) {
             mkdir($this->volumesPath, 0777, true);
-            chmod($this->volumesPath, 0777);
+            $this->applyCorrectPermissions($this->volumesPath, false);
         }
         
         // Criar diretório externo se não existir
         if (!file_exists($this->externalVolumesPath)) {
             mkdir($this->externalVolumesPath, 0777, true);
-            chmod($this->externalVolumesPath, 0777);
-            
-            // Garantir que o proprietário seja correto para Docker
-            $this->executeCommand("chown -R www-data:www-data " . escapeshellarg($this->externalVolumesPath));
+            $this->applyCorrectPermissions($this->externalVolumesPath, false);
         }
     }
 
@@ -47,18 +123,95 @@ class ContainerManager
             // Corrigir permissões de um container específico
             $clientDir = $this->externalVolumesPath . '/' . $this->sanitizeString($client) . '_' . $containerId;
             if (is_dir($clientDir)) {
-                $this->executeCommand("chmod -R 777 " . escapeshellarg($clientDir));
-                $this->executeCommand("chown -R 1000:1000 " . escapeshellarg($clientDir));
-                return ['status' => 'success', 'message' => 'Permissions fixed for specific container'];
+                $userInfo = $this->applyCorrectPermissions($clientDir, true);
+                return [
+                    'status' => 'success', 
+                    'message' => 'Permissions fixed for specific container',
+                    'applied_permissions' => $userInfo
+                ];
             } else {
                 throw new Exception('Container directory not found', 404);
             }
         } else {
             // Corrigir permissões de todos os diretórios
-            $this->executeCommand("chmod -R 777 " . escapeshellarg($this->externalVolumesPath));
-            $this->executeCommand("chown -R 1000:1000 " . escapeshellarg($this->externalVolumesPath));
-            return ['status' => 'success', 'message' => 'Permissions fixed for all containers'];
+            $userInfo = $this->applyCorrectPermissions($this->externalVolumesPath, false);
+            
+            // Corrigir também todos os subdiretórios como containers
+            $dirs = glob($this->externalVolumesPath . '/*', GLOB_ONLYDIR);
+            foreach ($dirs as $dir) {
+                $this->applyCorrectPermissions($dir, true);
+            }
+            
+            return [
+                'status' => 'success', 
+                'message' => 'Permissions fixed for all containers',
+                'applied_permissions' => $userInfo
+            ];
         }
+    }
+
+    /**
+     * Diagnóstica configurações do Docker e permissões
+     */
+    public function dockerDiagnostic()
+    {
+        $userInfo = $this->getDockerUserInfo();
+        
+        // Testar acesso ao Docker
+        $dockerTest = $this->executeCommand("docker version --format '{{.Server.Version}}' 2>/dev/null");
+        
+        // Verificar grupos do usuário atual
+        $groupsResult = $this->executeCommand("groups");
+        
+        // Verificar se pode acessar o socket
+        $socketTest = $this->executeCommand("ls -la /var/run/docker.sock");
+        
+        // Testar comando Docker simples
+        $simpleTest = $this->executeCommand("docker ps --format 'table {{.Names}}'");
+        
+        return [
+            'status' => 'success',
+            'user_info' => $userInfo,
+            'docker_version' => $dockerTest['success'] ? trim($dockerTest['output']) : 'Not accessible',
+            'docker_accessible' => $dockerTest['success'],
+            'user_groups' => $groupsResult['success'] ? trim($groupsResult['output']) : 'Unknown',
+            'socket_permissions' => $socketTest['success'] ? trim($socketTest['output']) : 'Not accessible',
+            'docker_ps_test' => [
+                'success' => $simpleTest['success'],
+                'output' => $simpleTest['success'] ? trim($simpleTest['output']) : $simpleTest['error']
+            ],
+            'recommendations' => $this->getDockerRecommendations($userInfo, $dockerTest['success'])
+        ];
+    }
+
+    /**
+     * Gera recomendações baseadas no diagnóstico
+     */
+    private function getDockerRecommendations($userInfo, $dockerAccessible)
+    {
+        $recommendations = [];
+        
+        if (!$dockerAccessible) {
+            $recommendations[] = 'Docker não está acessível. Verifique se o usuário está no grupo docker.';
+            
+            if ($userInfo['docker_gid']) {
+                $recommendations[] = "Adicione o usuário {$userInfo['user']} ao grupo docker: usermod -aG docker {$userInfo['user']}";
+            } else {
+                $recommendations[] = 'Grupo docker não encontrado. Instale o Docker corretamente.';
+            }
+            
+            $recommendations[] = 'Reinicie o serviço web após adicionar ao grupo docker.';
+        }
+        
+        if (!$userInfo['socket_info']) {
+            $recommendations[] = 'Socket do Docker não encontrado em /var/run/docker.sock';
+        }
+        
+        if (empty($recommendations)) {
+            $recommendations[] = 'Configuração do Docker parece estar correta.';
+        }
+        
+        return $recommendations;
     }
 
     /**
@@ -331,17 +484,14 @@ class ContainerManager
             $clientDir = $this->volumesPath . '/' . $client . '_' . $uniqueId;
             if (!file_exists($clientDir)) {
                 mkdir($clientDir, 0777, true);
-                chmod($clientDir, 0777);
+                $this->applyCorrectPermissions($clientDir, false);
             }
             
             // Criar diretório externo (servidor)
             $externalClientDir = $this->externalVolumesPath . '/' . $client . '_' . $uniqueId;
             if (!file_exists($externalClientDir)) {
                 mkdir($externalClientDir, 0777, true);
-                chmod($externalClientDir, 0777);
-                
-                // Definir proprietário correto para Docker
-                $this->executeCommand("chown -R www-data:www-data " . escapeshellarg($externalClientDir));
+                $this->applyCorrectPermissions($externalClientDir, true);
             }
             
         } catch (Exception $e) {
@@ -366,9 +516,7 @@ class ContainerManager
         $dataDir = $clientPaths['external'] . '/'. $containerName;
         if (!file_exists($dataDir)) {
             mkdir($dataDir, 0777, true);
-            chmod($dataDir, 0777);
-            // Definir proprietário correto
-            $this->executeCommand("chown -R www-data:www-data " . escapeshellarg($dataDir));
+            $this->applyCorrectPermissions($dataDir, true);
         }
 
         if ($software === 'n8n') {
@@ -389,9 +537,7 @@ class ContainerManager
         $n8nDataDir = $dataDir . '/n8n_data';
         if (!file_exists($n8nDataDir)) {
             mkdir($n8nDataDir, 0777, true);
-            chmod($n8nDataDir, 0777);
-            // Definir proprietário correto para N8N (user node = UID 1000)
-            $this->executeCommand("chown -R 1000:1000 " . escapeshellarg($n8nDataDir));
+            $this->applyCorrectPermissions($n8nDataDir, true);
         }
 
         // Usar o diretório de dados correto para montagem no container
@@ -429,14 +575,11 @@ class ContainerManager
 
         if (!file_exists($instancesDir)) {
             mkdir($instancesDir, 0777, true);
-            chmod($instancesDir, 0777);
-            // Evolution API roda como root no container, então usar 1000:1000 para compatibilidade
-            $this->executeCommand("chown -R 1000:1000 " . escapeshellarg($instancesDir));
+            $this->applyCorrectPermissions($instancesDir, true);
         }
         if (!file_exists($storeDir)) {
             mkdir($storeDir, 0777, true);
-            chmod($storeDir, 0777);
-            $this->executeCommand("chown -R 1000:1000 " . escapeshellarg($storeDir));
+            $this->applyCorrectPermissions($storeDir, true);
         }
 
         $domain = $subdomain . '.bwserver.com.br';

@@ -54,7 +54,9 @@ RUN if [ -f "composer.json" ]; then composer install --no-dev --optimize-autoloa
 # Copiar arquivos do projeto
 COPY . .
 
-RUN groupadd -g 1001 docker && usermod -aG docker www-data
+# Criar grupo docker com GID específico e adicionar www-data
+RUN groupadd -g 999 docker || groupmod -g 999 docker
+RUN usermod -aG docker www-data
 
 # Copiar script de boot
 COPY boot.sh /usr/local/bin/boot.sh

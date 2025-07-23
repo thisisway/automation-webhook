@@ -61,6 +61,13 @@ try {
             $result = $containerManager->fixPermissions($client, $containerId);
             break;
 
+        case '/api/docker-diagnostic':
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed', 405);
+            }
+            $result = $containerManager->dockerDiagnostic();
+            break;
+
         case '/':
             $result = [
                 'status' => 'success',
@@ -71,7 +78,8 @@ try {
                     'DELETE /api/delete' => 'Delete container',
                     'GET /api/status' => 'Get container status',
                     'GET /api/list' => 'List containers',
-                    'POST /api/fix-permissions' => 'Fix volume permissions'
+                    'POST /api/fix-permissions' => 'Fix volume permissions',
+                    'GET /api/docker-diagnostic' => 'Docker configuration diagnostic'
                 ]
             ];
             break;

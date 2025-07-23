@@ -286,7 +286,7 @@ class ContainerManager
     private function createContainerDirect($software, $vcpu, $mem, $subdomain, $uniqueId, $clientPath)
     {
         $containerName = $software . '-' . $uniqueId;
-                
+
         // Criar diretórios de dados necessários
         $dataDir = $clientPath . '/data';
         if (!file_exists($dataDir)) {
@@ -307,13 +307,13 @@ class ContainerManager
      */
     private function createN8nContainer($containerName, $subdomain, $clientPath, $vcpu, $mem)
     {
-        // Nome do volume Docker
-        $volumeName = $clientPath . "/n8n_data_" . $containerName;
+        // Criar diretório de dados para o N8N
+        $n8nDataDir = $clientPath . '/n8n_data';
+        if (!file_exists($n8nDataDir)) {
+            mkdir($n8nDataDir, 0755, true);
+        }
 
         $domain = $subdomain . '.bwserver.com.br';
-
-        // Cria o volume se não existir
-        $this->executeCommand("docker volume create " . escapeshellarg($volumeName));
 
         // Debug the domain value - utiliza o diretório do container
         $logFile = $this->basePath . '/volumes/debug_n8n_domain.log';
@@ -321,13 +321,10 @@ class ContainerManager
 
         $domainRule = 'Host(`' . $domain . '` || `'.$subdomain.'.localhost`) ';
 
-        $this->executeCommand("docker volume create " . escapeshellarg($volumeName));
-
-
         $command = "docker run -d " .
                    "--name " . escapeshellarg($containerName) . " " .
                    "--restart unless-stopped " .
-                   "-v " . escapeshellarg($volumeName) . ":/home/node/.n8n " .
+                   "-v " . escapeshellarg($n8nDataDir) . ":/home/node/.n8n " .
                    "--network traefik " .
                    "--label traefik.enable=true " .
                    "--label " . escapeshellarg("traefik.http.routers." . $containerName . ".rule=" . $domainRule) . " " .

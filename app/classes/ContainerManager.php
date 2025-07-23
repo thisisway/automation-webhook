@@ -2,15 +2,13 @@
 
 class ContainerManager
 {
-    private $basePath;
     private $volumesPath;
     private $scriptsPath;
 
     public function __construct()
     {
-        $this->basePath = '/var/www/html';
-        $this->volumesPath = $this->basePath . '/volumes';
-        $this->scriptsPath = $this->basePath . '/app/scripts';
+        $this->volumesPath = './volumes';
+        $this->scriptsPath = './app/scripts';
     }
 
     /**
@@ -314,10 +312,6 @@ class ContainerManager
         }
 
         $domain = $subdomain . '.bwserver.com.br';
-
-        // Debug the domain value - utiliza o diretório do container
-        $logFile = $this->basePath . '/volumes/debug_n8n_domain.log';
-        file_put_contents($logFile, "Container: $containerName, Domain: $domain\n", FILE_APPEND);
 
         $domainRule = 'Host(`' . $domain . '` || `'.$subdomain.'.localhost`) ';
 

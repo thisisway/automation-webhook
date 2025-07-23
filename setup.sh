@@ -57,7 +57,14 @@ if command_exists docker; then
   else
     echo "Starting automation webhook plataform"
     docker compose up -d
-  fi  
+  fi
+
+  echo "Creating directories for automation webhook"
+
+  # Create system directories
+  mkdir -p /etc/automation-webhook
+  chown -R $USER:$USER /etc/automation-webhook
+  chmod -R 755 /etc/automation-webhook
 fi
 
 echo "Automation webhook plataform started successfully"

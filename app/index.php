@@ -51,6 +51,16 @@ try {
             $result = $containerManager->listContainers($client);
             break;
 
+        case '/api/fix-permissions':
+            if ($method !== 'POST') {
+                throw new Exception('Method not allowed', 405);
+            }
+            $input = json_decode(file_get_contents('php://input'), true);
+            $client = $input['client'] ?? null;
+            $containerId = $input['containerId'] ?? null;
+            $result = $containerManager->fixPermissions($client, $containerId);
+            break;
+
         case '/':
             $result = [
                 'status' => 'success',
@@ -60,7 +70,8 @@ try {
                     'POST /api/create' => 'Create new container',
                     'DELETE /api/delete' => 'Delete container',
                     'GET /api/status' => 'Get container status',
-                    'GET /api/list' => 'List containers'
+                    'GET /api/list' => 'List containers',
+                    'POST /api/fix-permissions' => 'Fix volume permissions'
                 ]
             ];
             break;

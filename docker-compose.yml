@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./volumes:/var/www/html/volumes
+      - /etc/automation-webhook/volumes:/etc/automation-webhook/volumes
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/var/www/html
     environment:

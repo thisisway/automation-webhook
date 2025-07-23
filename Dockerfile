@@ -56,9 +56,6 @@ COPY . .
 
 RUN groupadd -g 1001 docker && usermod -aG docker www-data
 
-RUN chown -R www-data:www-data /var/www/html/volumes \
-    && chmod -R 777 /var/www/html/volumes
-
 # Copiar script de boot
 COPY boot.sh /usr/local/bin/boot.sh
 RUN chmod +x /usr/local/bin/boot.sh

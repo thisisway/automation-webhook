@@ -51,6 +51,13 @@ if command_exists docker; then
     echo "Starting automation webhook plataform"
     docker compose up -d
   fi
+
+  if docker network ls | grep -q "traefik"; then
+    echo "Docker network traefik already exists"
+  else
+    echo "Creating Docker network traefik"
+    docker network create traefik
+  fi
 fi
 
 echo "Automation webhook plataform started successfully"

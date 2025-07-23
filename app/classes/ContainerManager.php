@@ -27,7 +27,7 @@ class ContainerManager
         $mem = (int)$data['mem'];
 
         // Gerar ID único
-        $uniqueId = $this->generateUniqueId();
+        $uniqueId = uniqid();
         
         // Criar nome do subdomínio
         $subdomain = $this->createSubdomain($client, $software, $uniqueId);
@@ -255,14 +255,6 @@ class ContainerManager
     }
 
     /**
-     * Gera ID único
-     */
-    private function generateUniqueId()
-    {
-        return uniqid('', true);
-    }
-
-    /**
      * Cria subdomínio
      */
     private function createSubdomain($client, $software, $uniqueId)
@@ -275,9 +267,9 @@ class ContainerManager
     /**
      * Cria diretório do cliente
      */
-    private function createClientDirectory($client, $uniqueId)
+    private function createClientDirectory($client)
     {
-        $clientDir = $this->volumesPath . '/' . $client . '_' . $uniqueId;
+        $clientDir = $this->volumesPath . '/' . $client;
         
         if (!file_exists($clientDir)) {
             if (!mkdir($clientDir, 0755, true)) {
@@ -294,8 +286,7 @@ class ContainerManager
     private function createContainerDirect($software, $vcpu, $mem, $subdomain, $uniqueId, $clientPath)
     {
         $containerName = $software . '-' . $uniqueId;
-        $domain = $subdomain . '.bwserver.com.br';
-        
+                
         // Criar diretórios de dados necessários
         $dataDir = $clientPath . '/data';
         if (!file_exists($dataDir)) {
@@ -303,9 +294,9 @@ class ContainerManager
         }
         
         if ($software === 'n8n') {
-            return $this->createN8nContainer($containerName, $domain, $clientPath, $vcpu, $mem);
+            return $this->createN8nContainer($containerName, $subdomain, $clientPath, $vcpu, $mem);
         } elseif ($software === 'evoapi') {
-            return $this->createEvoApiContainer($containerName, $domain, $clientPath, $vcpu, $mem);
+            return $this->createEvoApiContainer($containerName, $subdomain, $clientPath, $vcpu, $mem);
         }
         
         return ['success' => false, 'error' => 'Software not supported'];
@@ -314,10 +305,12 @@ class ContainerManager
     /**
      * Cria container N8N
      */
-    private function createN8nContainer($containerName, $domain, $clientPath, $vcpu, $mem)
+    private function createN8nContainer($containerName, $subdomain, $clientPath, $vcpu, $mem)
     {
         // Nome do volume Docker
-        $volumeName = "n8n_data_" . $containerName;
+        $volumeName = $clientPath . "/n8n_data_" . $containerName;
+
+        $domain = $subdomain . '.bwserver.com.br';
 
         // Cria o volume se não existir
         $this->executeCommand("docker volume create " . escapeshellarg($volumeName));
@@ -325,9 +318,12 @@ class ContainerManager
         // Debug the domain value - utiliza o diretório do container
         $logFile = $this->basePath . '/volumes/debug_n8n_domain.log';
         file_put_contents($logFile, "Container: $containerName, Domain: $domain\n", FILE_APPEND);
-        
-        $domainRule = 'Host(`' . $domain . '`)';
-        
+
+        $domainRule = 'Host(`' . $domain . '` || `'.$subdomain.'.localhost`) ';
+
+        $this->executeCommand("docker volume create " . escapeshellarg($volumeName));
+
+
         $command = "docker run -d " .
                    "--name " . escapeshellarg($containerName) . " " .
                    "--restart unless-stopped " .
@@ -337,6 +333,9 @@ class ContainerManager
                    "--label " . escapeshellarg("traefik.http.routers." . $containerName . ".rule=" . $domainRule) . " " .
                    "--label " . escapeshellarg("traefik.http.routers." . $containerName . ".entrypoints=web") . " " .
                    "--label " . escapeshellarg("traefik.http.services." . $containerName . ".loadbalancer.server.port=5678") . " " .
+                   "--cpus=" . $vcpu . " " .
+                   "--memory=" . $mem . "m " .
+                   "-e N8N_HOST=" . escapeshellarg($domain) . " " .
                    "docker.n8n.io/n8nio/n8n";
         
         return $this->executeCommand($command);

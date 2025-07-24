@@ -3,6 +3,11 @@
 echo "=== Automation Webhook Boot Script ==="
 echo "Starting system initialization..."
 
+# Função para verificar se um comando existe
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
 # Função para verificar se um container está rodando
 check_container() {
     local container_name=$1
@@ -90,33 +95,47 @@ fi
 VOLUMES_DIR="/var/www/html/volumes"
 EXTERNAL_VOLUMES_DIR="/etc/automation-webhook/volumes"
 
+# Função para criar diretório com permissões
+create_directory_with_permissions() {
+    local dir="$1"
+    local description="$2"
+    
+    echo "� Verificando/criando $description..."
+    
+    # Criar diretório se não existir, com umask permissivo
+    if [ ! -d "$dir" ]; then
+        umask 000
+        mkdir -p "$dir" 2>/dev/null || {
+            echo "⚠️  Falha ao criar $dir (sem permissão de escrita no diretório pai)"
+            return 1
+        }
+        umask 022
+        echo "✅ Diretório criado: $dir"
+    else
+        echo "✅ Diretório já existe: $dir"
+    fi
+    
+    # Aplicar permissões usando chown/chmod
+    if chown -R www-data:docker "$dir" 2>/dev/null; then
+        echo "✅ Propriedade configurada para www-data:docker"
+    else
+        echo "⚠️  Falha ao definir propriedade (executando como usuário sem privilégios)"
+    fi
+    
+    if chmod -R 777 "$dir" 2>/dev/null; then
+        echo "✅ Permissões 777 aplicadas"
+    else
+        echo "⚠️  Falha ao definir permissões (executando como usuário sem privilégios)"
+    fi
+    
+    return 0
+}
+
 # Configurar pasta de volumes local
-if [ -d "$VOLUMES_DIR" ]; then
-    echo "🔧 Configurando permissões da pasta de volumes local..."
-    chown -R www-data:docker "$VOLUMES_DIR"
-    chmod -R 777 "$VOLUMES_DIR"
-    echo "✅ Permissões configuradas para $VOLUMES_DIR"
-else
-    echo "📁 Criando pasta de volumes local..."
-    mkdir -p "$VOLUMES_DIR"
-    chown -R www-data:docker "$VOLUMES_DIR"
-    chmod -R 777 "$VOLUMES_DIR"
-    echo "✅ Pasta de volumes local criada: $VOLUMES_DIR"
-fi
+create_directory_with_permissions "$VOLUMES_DIR" "pasta de volumes local"
 
 # Configurar pasta de volumes externa (para containers)
-if [ -d "$EXTERNAL_VOLUMES_DIR" ]; then
-    echo "🔧 Configurando permissões da pasta de volumes externa..."
-    chown -R www-data:docker "$EXTERNAL_VOLUMES_DIR"
-    chmod -R 777 "$EXTERNAL_VOLUMES_DIR"
-    echo "✅ Permissões configuradas para $EXTERNAL_VOLUMES_DIR"
-else
-    echo "📁 Criando pasta de volumes externa..."
-    mkdir -p "$EXTERNAL_VOLUMES_DIR"
-    chown -R www-data:docker "$EXTERNAL_VOLUMES_DIR"
-    chmod -R 777 "$EXTERNAL_VOLUMES_DIR"
-    echo "✅ Pasta de volumes externa criada: $EXTERNAL_VOLUMES_DIR"
-fi
+create_directory_with_permissions "$EXTERNAL_VOLUMES_DIR" "pasta de volumes externa"
 
 # Verificar se a rede traefik existe, se não, criar
 if ! check_network "traefik"; then

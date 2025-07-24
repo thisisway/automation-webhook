@@ -29,18 +29,20 @@ class ContainerManager
         $testResult = $this->executeCommand("docker version --format '{{.Server.Version}}' 2>/dev/null");
         
         if (!$testResult['success']) {
-            // Tentar configurar acesso automaticamente
-            $currentUser = posix_getpwuid(posix_geteuid())['name'] ?? 'www-data';
-            
-            // Verificar se o grupo docker existe
-            $dockerGroupResult = $this->executeCommand("getent group docker 2>/dev/null");
-            if ($dockerGroupResult['success']) {
-                // Adicionar usuário ao grupo docker
-                $this->executeCommand("sudo usermod -aG docker $currentUser 2>/dev/null");
+            // Tentar configurar acesso automaticamente apenas se sudo existir
+            if ($this->commandExists('sudo')) {
+                $currentUser = posix_getpwuid(posix_geteuid())['name'] ?? 'www-data';
                 
-                // Configurar permissões do socket
-                $this->executeCommand("sudo chown root:docker /var/run/docker.sock 2>/dev/null");
-                $this->executeCommand("sudo chmod 660 /var/run/docker.sock 2>/dev/null");
+                // Verificar se o grupo docker existe
+                $dockerGroupResult = $this->executeCommand("getent group docker 2>/dev/null");
+                if ($dockerGroupResult['success']) {
+                    // Adicionar usuário ao grupo docker
+                    $this->executeCommand("sudo usermod -aG docker $currentUser 2>/dev/null");
+                    
+                    // Configurar permissões do socket
+                    $this->executeCommand("sudo chown root:docker /var/run/docker.sock 2>/dev/null");
+                    $this->executeCommand("sudo chmod 660 /var/run/docker.sock 2>/dev/null");
+                }
             }
         }
     }
@@ -108,17 +110,25 @@ class ContainerManager
         $userInfo = $this->getDockerUserInfo();
         
         // Sempre aplicar permissões 777 primeiro
-        $this->executeCommand("chmod -R 777 " . escapeshellarg($path));
+        $chmodResult = $this->executeCommand("chmod -R 777 " . escapeshellarg($path));
         
         if ($forContainer) {
             // Para containers, usar UID 1000 (usuário padrão dos containers) 
             // mas manter o GID do Docker para acesso ao socket
             $targetUid = 1000;
             $targetGid = $userInfo['docker_gid'] ?? $userInfo['gid'];
-            $this->executeCommand("chown -R {$targetUid}:{$targetGid} " . escapeshellarg($path));
+            
+            // Tentar sem sudo primeiro, depois com sudo se falhar
+            $chownResult = $this->executeCommand("chown -R {$targetUid}:{$targetGid} " . escapeshellarg($path));
+            if (!$chownResult['success']) {
+                $this->executeCommand("sudo chown -R {$targetUid}:{$targetGid} " . escapeshellarg($path));
+            }
         } else {
             // Para diretórios base, usar o usuário atual
-            $this->executeCommand("chown -R {$userInfo['uid']}:{$userInfo['gid']} " . escapeshellarg($path));
+            $chownResult = $this->executeCommand("chown -R {$userInfo['uid']}:{$userInfo['gid']} " . escapeshellarg($path));
+            if (!$chownResult['success']) {
+                $this->executeCommand("sudo chown -R {$userInfo['uid']}:{$userInfo['gid']} " . escapeshellarg($path));
+            }
         }
         
         return $userInfo;
@@ -131,13 +141,23 @@ class ContainerManager
     {
         // Criar diretório interno se não existir
         if (!file_exists($this->volumesPath)) {
-            mkdir($this->volumesPath, 0777, true);
+            if (!mkdir($this->volumesPath, 0777, true)) {
+                // Se falhar, tentar com umask temporário
+                $oldumask = umask(0);
+                mkdir($this->volumesPath, 0777, true);
+                umask($oldumask);
+            }
             $this->applyCorrectPermissions($this->volumesPath, false);
         }
         
         // Criar diretório externo se não existir
         if (!file_exists($this->externalVolumesPath)) {
-            mkdir($this->externalVolumesPath, 0777, true);
+            if (!mkdir($this->externalVolumesPath, 0777, true)) {
+                // Se falhar, tentar com umask temporário
+                $oldumask = umask(0);
+                mkdir($this->externalVolumesPath, 0777, true);
+                umask($oldumask);
+            }
             $this->applyCorrectPermissions($this->externalVolumesPath, false);
         }
     }
@@ -511,15 +531,25 @@ class ContainerManager
             // Criar diretório interno (projeto)
             $clientDir = $this->volumesPath . '/' . $client . '_' . $uniqueId;
             if (!file_exists($clientDir)) {
-                mkdir($clientDir, 0777, true);
-                $this->applyCorrectPermissions($clientDir, false);
+                $oldumask = umask(0);
+                $created = mkdir($clientDir, 0777, true);
+                umask($oldumask);
+                
+                if ($created) {
+                    $this->applyCorrectPermissions($clientDir, false);
+                }
             }
             
             // Criar diretório externo (servidor)
             $externalClientDir = $this->externalVolumesPath . '/' . $client . '_' . $uniqueId;
             if (!file_exists($externalClientDir)) {
-                mkdir($externalClientDir, 0777, true);
-                $this->applyCorrectPermissions($externalClientDir, true);
+                $oldumask = umask(0);
+                $created = mkdir($externalClientDir, 0777, true);
+                umask($oldumask);
+                
+                if ($created) {
+                    $this->applyCorrectPermissions($externalClientDir, true);
+                }
             }
             
         } catch (Exception $e) {
@@ -543,8 +573,13 @@ class ContainerManager
         // Criar diretórios de dados necessários no caminho externo (para containers)
         $dataDir = $clientPaths['external'] . '/'. $containerName;
         if (!file_exists($dataDir)) {
-            mkdir($dataDir, 0777, true);
-            $this->applyCorrectPermissions($dataDir, true);
+            $oldumask = umask(0);
+            $created = mkdir($dataDir, 0777, true);
+            umask($oldumask);
+            
+            if ($created) {
+                $this->applyCorrectPermissions($dataDir, true);
+            }
         }
 
         if ($software === 'n8n') {
@@ -564,8 +599,13 @@ class ContainerManager
         // Criar diretório específico para dados do N8N
         $n8nDataDir = $dataDir . '/n8n_data';
         if (!file_exists($n8nDataDir)) {
-            mkdir($n8nDataDir, 0777, true);
-            $this->applyCorrectPermissions($n8nDataDir, true);
+            $oldumask = umask(0);
+            $created = mkdir($n8nDataDir, 0777, true);
+            umask($oldumask);
+            
+            if ($created) {
+                $this->applyCorrectPermissions($n8nDataDir, true);
+            }
         }
 
         // Usar o diretório de dados correto para montagem no container
@@ -602,12 +642,22 @@ class ContainerManager
         $storeDir = $clientPath . '/data/evolution_store';
 
         if (!file_exists($instancesDir)) {
-            mkdir($instancesDir, 0777, true);
-            $this->applyCorrectPermissions($instancesDir, true);
+            $oldumask = umask(0);
+            $created = mkdir($instancesDir, 0777, true);
+            umask($oldumask);
+            
+            if ($created) {
+                $this->applyCorrectPermissions($instancesDir, true);
+            }
         }
         if (!file_exists($storeDir)) {
-            mkdir($storeDir, 0777, true);
-            $this->applyCorrectPermissions($storeDir, true);
+            $oldumask = umask(0);
+            $created = mkdir($storeDir, 0777, true);
+            umask($oldumask);
+            
+            if ($created) {
+                $this->applyCorrectPermissions($storeDir, true);
+            }
         }
 
         $domain = $subdomain . '.bwserver.com.br';
@@ -705,11 +755,14 @@ class ContainerManager
         // Primeiro tentar executar comando normalmente
         exec($command . ' 2>&1', $output, $returnVar);
         
-        // Se falhou e é um comando docker, tentar com sudo
+        // Se falhou e é um comando docker, tentar com sudo apenas se sudo existir
         if ($returnVar !== 0 && strpos($command, 'docker') === 0) {
-            $output = [];
-            $returnVar = 0;
-            exec('sudo ' . $command . ' 2>&1', $output, $returnVar);
+            // Verificar se sudo existe
+            if ($this->commandExists('sudo')) {
+                $output = [];
+                $returnVar = 0;
+                exec('sudo ' . $command . ' 2>&1', $output, $returnVar);
+            }
         }
 
         return [
@@ -717,6 +770,17 @@ class ContainerManager
             'output' => implode("\n", $output),
             'error' => $returnVar !== 0 ? implode("\n", $output) : null
         ];
+    }
+
+    /**
+     * Verifica se um comando existe no sistema
+     */
+    private function commandExists($command)
+    {
+        $output = [];
+        $returnVar = 0;
+        exec("which $command 2>/dev/null", $output, $returnVar);
+        return $returnVar === 0;
     }
 
     /**

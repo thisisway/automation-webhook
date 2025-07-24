@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     git \
     unzip \
+    sudo \
     libzip-dev \
     libonig-dev \
     libxml2-dev \

@@ -1,0 +1,8 @@
+<?php
+namespace App\Models;
+use Kernel\Model;
+class classname extends Model
+{
+    protected $table     = '';
+    protected $fillable  = [];
+}

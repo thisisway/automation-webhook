@@ -1,26 +1,48 @@
 services:
-  app:
+  web:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8000:80"
+    depends_on:
+      - postgres
+      - redis
     volumes:
-      - /etc/automation-webhook/volumes:/etc/automation-webhook/volumes
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - ./:/var/www/html
+      - .:/var/www/html
+      
+  postgres:
+    image: postgres:latest
+    ports:
+      - 5432:5432
     environment:
-      - APACHE_DOCUMENT_ROOT=/var/www/html/app
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    networks:
-      - traefik
-    privileged: true
-    user: root
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`) || Host(`localhost`)"
-      - "traefik.http.routers.automation-webhook.entrypoints=web"
-      - "traefik.http.services.automation-webhook.loadbalancer.server.port=80"
-    restart: unless-stopped
+      POSTGRES_USER: sistema_ieademe
+      POSTGRES_PASSWORD: sistema_ieademe
+      POSTGRES_DB: sistema_ieademe
 
-networks:
-  traefik:
-    external: true
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+
+  redis-commander:
+    container_name: redis-commander
+    hostname: redis-commander
+    image: ghcr.io/joeferner/redis-commander:latest
+    environment:
+    - REDIS_HOSTS=local:redis:6379
+    ports:
+    - "8081:8081"
+    user: redis
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8082:80"
+    depends_on:
+      - postgres

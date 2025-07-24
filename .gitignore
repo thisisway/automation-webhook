@@ -1,1 +1,4 @@
-volumes/*
+/vendor
+/storage/temp
+/storage/logs/error.log
+.env

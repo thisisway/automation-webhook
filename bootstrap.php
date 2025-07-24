@@ -1,18 +1,14 @@
 <?php
-ini_set('display_errors', 1);
 include 'kernel/Assets.php';
 include 'kernel/Dd.php';
 include 'kernel/RoutesFn.php';
 include 'kernel/GuardFn.php';
 use Routes\Web;
+use Routes\Api;
 use Kernel\Server;
-use Kernel\Session;
 use Kernel\Storage;
 use Whoops\Handler\PrettyPageHandler;
 use Whoops\Run;
-
-Session::start();
-
 
 $whoops = new Run();
 $whoops->pushHandler(new PrettyPageHandler());
@@ -32,8 +28,14 @@ $whoops->pushHandler(function($exception, $inspector, $run) {
 setlocale(LC_TIME, 'pt_BR', 'pt_BR.utf-8', 'pt_BR.utf-8', 'portuguese');
 date_default_timezone_set('America/Sao_Paulo');
 
-$routes = new Web();
-$route = $routes->getRoute(Server::getRequestMethod(), Server::getRequestURI());
+$webRoutes = new Web();
+$apiRoutes = new Api();
+
+$route = $webRoutes->getRoute(Server::getRequestMethod(), Server::getRequestURI());
+
+if (!$route) {
+    $route = $apiRoutes->getRoute(Server::getRequestMethod(), Server::getRequestURI());
+}
 
 if ($route) {
     $controller = 'App\\Controller\\' . $route->controller;

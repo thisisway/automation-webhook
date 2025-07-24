@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Rules;
+namespace Kernel;
 
 use Kernel\Redirect;
 use Kernel\Session;

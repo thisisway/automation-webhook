@@ -3,46 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file:
-      - .env
     ports:
-      - "8000:80"
-    depends_on:
-      - postgres
-      - redis
+      - "8001:8001"
     volumes:
-      - .:/var/www/html
-      
-  postgres:
-    image: postgres:latest
-    ports:
-      - 5432:5432
-    environment:
-      POSTGRES_USER: sistema_ieademe
-      POSTGRES_PASSWORD: sistema_ieademe
-      POSTGRES_DB: sistema_ieademe
-
-  redis:
-    image: redis:latest
-    ports:
-      - 6379:6379
-
-  redis-commander:
-    container_name: redis-commander
-    hostname: redis-commander
-    image: ghcr.io/joeferner/redis-commander:latest
-    environment:
-    - REDIS_HOSTS=local:redis:6379
-    ports:
-    - "8081:8081"
-    user: redis
-
-  pgadmin:
-    image: dpage/pgadmin4
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "8082:80"
-    depends_on:
-      - postgres
+      - /etc/automation-webhook:/etc/automation-webhook
+      - /var/run/docker.sock:/var/run/docker.sock:ro

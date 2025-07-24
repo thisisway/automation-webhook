@@ -55,7 +55,7 @@ RUN echo "max_execution_time = 600" > /usr/local/etc/php/conf.d/max_execution_ti
 RUN echo "session.gc_maxlifetime = 86400" > /usr/local/etc/php/conf.d/session_lifetime.ini
 
 
-EXPOSE 80
+EXPOSE 8001
 
 # Iniciar o servidor PHP embutido
-CMD ["php", "-S", "0.0.0.0:80", "-t", "/var/www/html/public"]
+CMD ["php", "-S", "0.0.0.0:8001", "-t", "/var/www/html/public"]

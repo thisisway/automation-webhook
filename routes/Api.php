@@ -10,7 +10,8 @@ class Api
     public function __construct()
     {
         $this->group('/api', function () {
-            $this->setRoute('POST', '/create', 'Controllers\ApiController@createContainer');
+            $this->setRoute('GET', '/list', 'ContainersController@listContainers');
+            $this->setRoute('POST', '/create', 'ContainersController@createContainer');
         });
     }
 }

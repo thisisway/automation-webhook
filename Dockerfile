@@ -64,7 +64,10 @@ RUN chmod +x /usr/local/bin/boot.sh
 
 # Criar diretórios necessários e definir permissões corretas
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 777 /var/www/html
+    && chmod -R 755 /var/www/html
+
+# Garantir que www-data pode acessar o socket do Docker
+RUN echo "www-data ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/usermod, /usr/bin/chown, /usr/bin/chmod" >> /etc/sudoers.d/www-data
 
 # Expor porta 80
 EXPOSE 80

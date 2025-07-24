@@ -56,19 +56,66 @@ if [ -z "$WWW_DATA_UID" ]; then
 fi
 echo "✅ Usuário www-data detectado: UID $WWW_DATA_UID"
 
+# Configurar acesso ao Docker para www-data
+echo "🔧 Configurando acesso ao Docker para www-data..."
+
+# Verificar se www-data já está no grupo docker
+if groups www-data | grep -q "\bdocker\b"; then
+    echo "✅ www-data já está no grupo docker"
+else
+    echo "➕ Adicionando www-data ao grupo docker..."
+    usermod -aG docker www-data
+    echo "✅ www-data adicionado ao grupo docker"
+fi
+
+# Configurar permissões do socket Docker
+if [ -S "/var/run/docker.sock" ]; then
+    echo "🔧 Configurando permissões do socket Docker..."
+    chown root:docker /var/run/docker.sock
+    chmod 660 /var/run/docker.sock
+    echo "✅ Permissões do socket Docker configuradas"
+else
+    echo "❌ Socket Docker não encontrado em /var/run/docker.sock"
+fi
+
+# Testar acesso ao Docker como www-data
+echo "🧪 Testando acesso ao Docker como www-data..."
+if su -s /bin/bash -c "docker version >/dev/null 2>&1" www-data; then
+    echo "✅ www-data pode executar comandos Docker"
+else
+    echo "⚠️  www-data ainda não pode executar Docker (pode precisar reiniciar o serviço)"
+fi
+
 # Configurar permissões na pasta de volumes
 VOLUMES_DIR="/var/www/html/volumes"
+EXTERNAL_VOLUMES_DIR="/etc/automation-webhook/volumes"
+
+# Configurar pasta de volumes local
 if [ -d "$VOLUMES_DIR" ]; then
-    echo "🔧 Configurando permissões da pasta de volumes..."
-    chown -R www-data:www-data "$VOLUMES_DIR"
-    chmod -R 755 "$VOLUMES_DIR"
+    echo "🔧 Configurando permissões da pasta de volumes local..."
+    chown -R www-data:docker "$VOLUMES_DIR"
+    chmod -R 777 "$VOLUMES_DIR"
     echo "✅ Permissões configuradas para $VOLUMES_DIR"
 else
-    echo "📁 Criando pasta de volumes..."
+    echo "📁 Criando pasta de volumes local..."
     mkdir -p "$VOLUMES_DIR"
-    chown -R www-data:www-data "$VOLUMES_DIR"
-    chmod -R 755 "$VOLUMES_DIR"
-    echo "✅ Pasta de volumes criada: $VOLUMES_DIR"
+    chown -R www-data:docker "$VOLUMES_DIR"
+    chmod -R 777 "$VOLUMES_DIR"
+    echo "✅ Pasta de volumes local criada: $VOLUMES_DIR"
+fi
+
+# Configurar pasta de volumes externa (para containers)
+if [ -d "$EXTERNAL_VOLUMES_DIR" ]; then
+    echo "🔧 Configurando permissões da pasta de volumes externa..."
+    chown -R www-data:docker "$EXTERNAL_VOLUMES_DIR"
+    chmod -R 777 "$EXTERNAL_VOLUMES_DIR"
+    echo "✅ Permissões configuradas para $EXTERNAL_VOLUMES_DIR"
+else
+    echo "📁 Criando pasta de volumes externa..."
+    mkdir -p "$EXTERNAL_VOLUMES_DIR"
+    chown -R www-data:docker "$EXTERNAL_VOLUMES_DIR"
+    chmod -R 777 "$EXTERNAL_VOLUMES_DIR"
+    echo "✅ Pasta de volumes externa criada: $EXTERNAL_VOLUMES_DIR"
 fi
 
 # Verificar se a rede traefik existe, se não, criar
@@ -180,8 +227,21 @@ echo ""
 echo "=== CONFIGURAÇÕES ==="
 echo "🔧 Grupo Docker: $DOCKER_GROUP_ID"
 echo "👤 Usuário www-data: $WWW_DATA_UID"
-echo "📁 Pasta volumes: $VOLUMES_DIR"
+echo "📁 Pasta volumes local: $VOLUMES_DIR"
+echo "📁 Pasta volumes externa: $EXTERNAL_VOLUMES_DIR"
 echo "🌐 Rede traefik: ativa"
+echo "🐳 Acesso Docker: $(su -s /bin/bash -c "docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'FALHOU'" www-data)"
+
+echo ""
+echo "=== TESTE DE PERMISSÕES ==="
+echo "🧪 Testando criação de container como www-data..."
+TEST_RESULT=$(su -s /bin/bash -c "docker run --rm hello-world >/dev/null 2>&1 && echo 'SUCESSO' || echo 'FALHOU'" www-data)
+if [ "$TEST_RESULT" = "SUCESSO" ]; then
+    echo "✅ www-data pode criar containers Docker"
+else
+    echo "❌ www-data NÃO pode criar containers Docker"
+    echo "   Solução: Reinicie o serviço web ou container"
+fi
 
 echo ""
 echo "✅ Boot script concluído!"

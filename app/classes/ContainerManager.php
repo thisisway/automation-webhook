@@ -13,8 +13,36 @@ class ContainerManager
         // Caminho externo no servidor (para montagem nos containers)
         $this->externalVolumesPath = '/etc/automation-webhook/volumes';
         
+        // Verificar e configurar acesso ao Docker
+        $this->ensureDockerAccess();
+        
         // Garantir que os diretórios base existam
         $this->ensureBaseDirectories();
+    }
+
+    /**
+     * Garante que o usuário atual tenha acesso ao Docker
+     */
+    private function ensureDockerAccess()
+    {
+        // Testar acesso ao Docker
+        $testResult = $this->executeCommand("docker version --format '{{.Server.Version}}' 2>/dev/null");
+        
+        if (!$testResult['success']) {
+            // Tentar configurar acesso automaticamente
+            $currentUser = posix_getpwuid(posix_geteuid())['name'] ?? 'www-data';
+            
+            // Verificar se o grupo docker existe
+            $dockerGroupResult = $this->executeCommand("getent group docker 2>/dev/null");
+            if ($dockerGroupResult['success']) {
+                // Adicionar usuário ao grupo docker
+                $this->executeCommand("sudo usermod -aG docker $currentUser 2>/dev/null");
+                
+                // Configurar permissões do socket
+                $this->executeCommand("sudo chown root:docker /var/run/docker.sock 2>/dev/null");
+                $this->executeCommand("sudo chmod 660 /var/run/docker.sock 2>/dev/null");
+            }
+        }
     }
 
     /**
@@ -674,7 +702,15 @@ class ContainerManager
         $output = [];
         $returnVar = 0;
 
+        // Primeiro tentar executar comando normalmente
         exec($command . ' 2>&1', $output, $returnVar);
+        
+        // Se falhou e é um comando docker, tentar com sudo
+        if ($returnVar !== 0 && strpos($command, 'docker') === 0) {
+            $output = [];
+            $returnVar = 0;
+            exec('sudo ' . $command . ' 2>&1', $output, $returnVar);
+        }
 
         return [
             'success' => $returnVar === 0,

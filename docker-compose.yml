@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - /etc/automation-webhook/volumes:/etc/automation-webhook/volumes
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - ./:/var/www/html
     environment:
       - APACHE_DOCUMENT_ROOT=/var/www/html/app
@@ -13,6 +13,7 @@ services:
     networks:
       - traefik
     privileged: true
+    user: root
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.automation-webhook.rule=Host(`webhook.bwserver.com.br`) || Host(`localhost`)"

@@ -8,31 +8,11 @@ RUN apt-get update && apt-get install -y \
     libicu-dev \
     libzip-dev \
     libpng-dev \
-    libxml2-dev \
     libpq-dev \
-    zip \
-    unzip \
-    libssl-dev \
-    pkg-config \
-    libfreetype6-dev \
-    libjpeg62-turbo-dev \
-    libwebp-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install -j$(nproc) \
-        intl \
-        zip \
-        mysqli \
-        pdo \
-        pdo_mysql \
-        pdo_pgsql \
-        gd
+    && docker-php-ext-install intl 
 
-# Instalar e habilitar o Redis
-RUN pecl install redis \
-    && docker-php-ext-enable redis
+RUN apt-get update && apt-get install -y docker.io curl
 
-# Instalar e habilitar o MongoDB
-# RUN pecl install mongodb && docker-php-ext-enable mongodb
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
@@ -44,18 +24,12 @@ COPY . /var/www/html
 
 WORKDIR /var/www/html
 
-RUN mkdir -p storage/temp
-RUN mkdir -p storage/logs
-
 RUN composer install
 
-RUN echo "max_execution_time = 600" > /usr/local/etc/php/conf.d/max_execution_time.ini
-
-# Configura o tempo de expiração da sessão PHP para 1 dia (86400 segundos)
-RUN echo "session.gc_maxlifetime = 86400" > /usr/local/etc/php/conf.d/session_lifetime.ini
-
-
 EXPOSE 8001
+
+# Configurar setup.php como entrypoint
+ENTRYPOINT ["php", "/var/www/html/setup.php"]
 
 # Iniciar o servidor PHP embutido
 CMD ["php", "-S", "0.0.0.0:8001", "-t", "/var/www/html/public"]

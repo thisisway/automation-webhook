@@ -11,8 +11,14 @@ class Connection
         {
             extract($data);
 
-            $dns = "$connection:host=$host;port=$port;dbname=$database";
-            $this->pdo = new \PDO($dns, $username, $password, $options);
+            if($connection === 'sqlite') {
+                $dns = "$connection:$database";
+                $this->pdo = new \PDO($dns, null, null, $options);
+            } else {
+                $dns = "$connection:host=$host;port=$port;dbname=$database";
+                $this->pdo = new \PDO($dns, $username, $password, $options);
+            }
+            
 
         }catch(\PDOException $e)
         {

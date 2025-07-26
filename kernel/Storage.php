@@ -32,7 +32,26 @@ class Storage
 
     public static function log($filename, $text)
     {
-        $file = fopen(dirname(__FILE__, 2) . '/storage/logs/' . $filename, 'a+');
+        $logPath = dirname(__FILE__, 2) . '/storage/logs/' . $filename;
+        
+        // Ensure the directory exists
+        $logDir = dirname($logPath);
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0775, true);
+        }
+        
+        // Ensure the file exists and is writable
+        if (!file_exists($logPath)) {
+            touch($logPath);
+            chmod($logPath, 0664);
+        }
+        
+        $file = fopen($logPath, 'a+');
+        if ($file === false) {
+            error_log("Failed to open log file: $logPath");
+            return;
+        }
+        
         fwrite($file, $text);
         fclose($file);
     }
@@ -40,7 +59,27 @@ class Storage
     public static function printAndLog($filename, $text)
     {
         echo $text;
-        $file = fopen(dirname(__FILE__, 2) . '/storage/logs/' . $filename, 'a+');
+        
+        $logPath = dirname(__FILE__, 2) . '/storage/logs/' . $filename;
+        
+        // Ensure the directory exists
+        $logDir = dirname($logPath);
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0775, true);
+        }
+        
+        // Ensure the file exists and is writable
+        if (!file_exists($logPath)) {
+            touch($logPath);
+            chmod($logPath, 0664);
+        }
+        
+        $file = fopen($logPath, 'a+');
+        if ($file === false) {
+            error_log("Failed to open log file: $logPath");
+            return;
+        }
+        
         fwrite($file, $text);
         fclose($file);
     }

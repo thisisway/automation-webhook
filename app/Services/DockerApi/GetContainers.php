@@ -2,7 +2,7 @@
 namespace App\Services\DockerApi;
 class GetContainers
 {
-    public function __invoke()
+    public function get()
     {
         exec('docker ps --format "{{.ID}}: {{.Names}}: {{.Image}}: {{.Status}}"', $output, $return_var);
         if ($return_var !== 0) {

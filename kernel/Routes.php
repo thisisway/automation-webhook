@@ -5,7 +5,13 @@ use Kernel\Request;
 trait Routes
 {
 
-    private $routes = [];
+    private $routes = [
+        'GET'  => [],
+        'POST' => [],
+        'PUT'  => [],
+        'PATCH'=> [],
+        'DELETE' => []
+    ];
     private $groupPrefix = null;
     private $middlewares = false;
 

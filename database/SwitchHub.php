@@ -33,6 +33,14 @@ class SwitchHub
                     \PDO::ERRMODE_EXCEPTION
                 ]
             ],
+            'sqlite' => [
+                'connection' => 'sqlite',
+                'database' => Env::get('SQLITE_DATABASE') ?? 'storage/database/database.sqlite',
+                'options' => [
+                    \PDO::ATTR_ERRMODE,
+                    \PDO::ERRMODE_EXCEPTION
+                ]
+            ],
             'redis' => [
                 'scheme' => 'tcp',
                 'host' => Env::get('REDIS_HOST') ?? 'localhost',

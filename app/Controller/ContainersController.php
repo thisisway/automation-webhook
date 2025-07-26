@@ -1,14 +1,34 @@
 <?php
 
 namespace App\Controller;
+
+use App\Services\DockerApi\GetContainers;
+use App\Services\Filesystem\FS;
+use App\Services\Templates\MakeTemplate;
 use Kernel\Request;
-use Kernel\Redirect;
 
 class ContainersController extends Controller
 {
-    public function listContainers(Request $request)
+    public function listContainers()
     {
-        $containers = (new \App\Services\DockerApi\GetContainers())();
+        $containers = (new GetContainers())->get();
         return $this->json($containers);
+    }
+
+    public function createContainer(Request $request)
+    {
+        \App\Validations\CreateContainerValidation::rules($request);
+
+        $name = $request->get('name');
+        $service = $request->get('service');
+        $vcpus = $request->get('vcpus');
+        $memory = $request->get('memory');
+
+        $filesystem = new FS();
+        $templates = new MakeTemplate($name, $service, $vcpus, $memory);
+
+        $makeClientFolder = $filesystem->makeClientFolder($name);
+        $makeTemplate = $templates->createTemplate();
+
     }
 }

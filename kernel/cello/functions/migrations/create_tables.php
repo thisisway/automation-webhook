@@ -123,3 +123,61 @@ function createTablePostgres($schema, $reset = false)
 
     return $sql;
 }
+
+function createTableSQLite()
+{
+    global $schema;
+    $sql = "CREATE TABLE IF NOT EXISTS `" . $schema['table'] . "` (\n    `" . $schema['table_id'] . "` INTEGER PRIMARY KEY AUTOINCREMENT";
+
+    foreach ($schema['columns'] as $column => $attributes) {
+        $sql .= ",\n    " . createColumnSQLite($column, $attributes);
+    }
+
+    if ($schema['timestamp']) {
+        $sql .= ",\n    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP";
+    }
+
+    $sql .= "\n);";
+
+    return $sql;
+    
+}
+
+function createColumnSQLite($column, $attributes)
+{
+    $typeMap = [
+        'integer' => 'INTEGER',
+        'small_integer' => 'SMALLINT',
+        'big_integer' => 'BIGINT',
+        'decimal' => 'DECIMAL',
+        'float' => 'REAL',
+        'double' => 'DOUBLE',
+        'boolean' => 'BOOLEAN',
+        'string' => 'TEXT',
+        'text' => 'TEXT',
+        'date' => 'DATE',
+        'datetime' => 'DATETIME',
+        'time' => 'TIME',
+        'json' => 'JSON'
+    ];
+
+    $sql = "`" . $column . "` " . $typeMap[strtolower($attributes['type'])];
+
+    // Adiciona o comprimento se aplicável (ex: TEXT, DECIMAL)
+    if (isset($attributes['length']) && in_array(strtolower($attributes['type']), ['string', 'decimal'])) {
+        $sql .= "(" . $attributes['length'] . ")";
+    }
+
+    // Adiciona NOT NULL se não for nulo
+    if (isset($attributes['nullable']) && !$attributes['nullable']) {
+        $sql .= " NOT NULL";
+    }
+
+    // Adiciona valor padrão se estiver presente
+    if (isset($attributes['default'])) {
+        $sql .= " DEFAULT '" . $attributes['default'] . "'";
+    }
+
+    return $sql;
+}

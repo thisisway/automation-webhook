@@ -9,12 +9,16 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libpng-dev \
     libpq-dev \
-    && docker-php-ext-install intl 
+    libsqlite3-dev \
+    default-mysql-client \
+    && docker-php-ext-install intl pdo pdo_mysql pdo_sqlite
 
 RUN apt-get update && apt-get install -y docker.io curl
 
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV DB_CONNECTION=sqlite
+ENV SQLITE_DATABASE=/etc/automation-webhook/database/database.sqlite
 
 # instala o Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -24,12 +28,24 @@ COPY . /var/www/html
 
 WORKDIR /var/www/html
 
+RUN mkdir -p /var/www/html/storage/logs && \
+    touch /var/www/html/storage/logs/error.log && \
+    chmod -R 775 /var/www/html/storage
+
 RUN composer install
+
+# Torna o setup.php executável
+RUN chmod +x setup.php
+
+# Cria um script de entrada
+RUN echo '#!/bin/bash\n\
+if [ "$1" = "setup" ]; then\n\
+    exec php setup.php setup\n\
+else\n\
+    exec php -S 0.0.0.0:8001 -t /var/www/html/public\n\
+fi' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8001
 
-# Configurar setup.php como entrypoint
-ENTRYPOINT ["php", "/var/www/html/setup.php"]
-
-# Iniciar o servidor PHP embutido
-CMD ["php", "-S", "0.0.0.0:8001", "-t", "/var/www/html/public"]
+# Define o script de entrada
+ENTRYPOINT ["/entrypoint.sh"]

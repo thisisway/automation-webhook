@@ -31,11 +31,7 @@ date_default_timezone_set('America/Sao_Paulo');
 $webRoutes = new Web();
 $apiRoutes = new Api();
 
-$route = $webRoutes->getRoute(Server::getRequestMethod(), Server::getRequestURI());
-
-if (!$route) {
-    $route = $apiRoutes->getRoute(Server::getRequestMethod(), Server::getRequestURI());
-}
+$route = getRoute();
 
 if ($route) {
     $controller = 'App\\Controller\\' . $route->controller;

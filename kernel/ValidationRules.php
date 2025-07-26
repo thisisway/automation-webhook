@@ -231,6 +231,20 @@ class ValidationRules
                         if (!isset($errors[$attr]))
                             $errors[$attr] = $message;
                 }
+
+                if (preg_match('/integer/', $rule)) {
+                    if (!is_numeric($value) || intval($value) != $value) {
+                        if (!isset($errors[$attr]))
+                            $errors[$attr] = $message;
+                    }
+                }
+
+                if (preg_match('/float/', $rule)) {
+                    if (!is_numeric($value) || !is_float((float)$value)) {
+                        if (!isset($errors[$attr]))
+                            $errors[$attr] = $message;
+                    }
+                }
             }
         }
 

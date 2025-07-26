@@ -52,6 +52,22 @@ function migratePostgres($pdo, $schema, $reset)
     }
 }
 
+function migrateSQLite($pdo, $schema, $reset)
+{
+    global $colorGreen; // Verde
+    global $colorRed;   // Vermelho
+    global $colorReset;  // Reseta a cor
+    try{
+        $sql = createTableSQLite($schema, $reset);
+        $pdo->exec($sql);
+        echo "{$colorGreen} Success! {$colorReset}" . PHP_EOL;
+        return true;
+    }catch(PDOException $e){
+        echo "{$colorRed} Failed: ".$e->getMessage() . PHP_EOL; 
+        return false;  // Tabela já existe no SQLite.
+    }
+}
+
 
 function migrate($pdo, $dbType, $schema, $modelName, $reset)
 {
@@ -75,7 +91,9 @@ function migrate($pdo, $dbType, $schema, $modelName, $reset)
         return migrateMySQL($pdo, $schema, $reset);
     } elseif ($dbType === 'postgres') {
         return migratePostgres($pdo, $schema, $reset);
-    } else {
+    } elseif ($dbType === 'sqlite') {
+        return migrateSQLite($pdo, $schema, $reset);
+    }else {
         echo "{$colorRed} Tipo de banco de dados não suportado.{$colorReset}" . PHP_EOL;
         return false;
     }

@@ -41,6 +41,7 @@ RUN chmod +x setup.php
 RUN echo '#!/bin/bash\n\
 if [ "$1" = "setup" ]; then\n\
     exec php setup.php setup\n\
+    exec php cello migrate\n\
 else\n\
     exec php -S 0.0.0.0:8001 -t /var/www/html/public\n\
 fi' > /entrypoint.sh && chmod +x /entrypoint.sh

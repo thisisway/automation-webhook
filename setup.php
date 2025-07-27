@@ -118,4 +118,14 @@ if (trim($service) !== "automation-webhook") {
     echo "Serviço automation-webhook já existe.\n";
 }
 
+// cria arquivo de banco de dados SQLite
+$databasePath = '/etc/automation-webhook/database/database.sqlite';
+if (!file_exists($databasePath)) {
+    if (!is_dir(dirname($databasePath))) {
+        mkdir(dirname($databasePath), 0755, true);
+    }
+    touch($databasePath);   
+    echo "Db setup concluído\n";
+} 
 echo "\033[32mSetup concluído com sucesso!\033[0m\n";
+exit(0);

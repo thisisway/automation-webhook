@@ -2,25 +2,24 @@
 
 namespace App\Console;
 
-use Database\Connection;
-
+use App\Models\Configs;
 class Commands
 {
-    public function createTables()
+    public function seed()
     {
-        $connection = new Connection(
-            \Database\SwitchHub::Connections()['sqlite']
-        );
-        $pdo = $connection->pdo;
-        $sql = "
-            CREATE TABLE IF NOT EXISTS configurations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT NOT NULL UNIQUE,
-                value TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-        ";
-        $pdo->exec($sql);
+        echo "setup configurations\n".PHP_EOL;
+        $configs = [
+            [
+                'name' => 'domain',
+                'value' => 'myapp.local',
+            ]
+        ];
+        foreach ($configs as $config) {
+            echo "Creating config: {$config['name']}\n".PHP_EOL;
+            (new Configs())->create([
+                'key' => $config['name'],
+                'value' => $config['value'],
+            ]);
+        }
     }
 }

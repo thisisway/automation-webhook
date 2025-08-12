@@ -40,9 +40,20 @@ RUN chmod +x setup.php
 # Cria um script de entrada
 RUN echo '#!/bin/bash\n\
 if [ "$1" = "setup" ]; then\n\
-    exec php setup.php setup\n\
-    exec php cello migrate\n\
+    echo "Iniciando setup..."\n\
+    mkdir -p /etc/automation-webhook/database\n\
+    touch /etc/automation-webhook/database/database.sqlite\n\
+    php setup.php setup\n\
+    php cello migrate\n\
+    php cello console seed\n\
+    echo "Setup completo finalizado!"\n\
 else\n\
+    mkdir -p /etc/automation-webhook/database\n\
+    touch /etc/automation-webhook/database/database.sqlite\n\
+    php cello migrate\n\
+    php cello console seed\n\
+    echo "Setup completo finalizado!"\n\
+    echo "Iniciando servidor web na porta 8001..."\n\
     exec php -S 0.0.0.0:8001 -t /var/www/html/public\n\
 fi' > /entrypoint.sh && chmod +x /entrypoint.sh
 

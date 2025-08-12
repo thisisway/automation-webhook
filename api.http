@@ -1,0 +1,9 @@
+POST http://localhost:8001/api/create
+Content-Type: application/json
+
+{
+  "name": "steve",
+  "service": "n8n",
+  "vcpus": 2,
+  "memory": 4096
+}

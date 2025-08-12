@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Services\DockerApi\GetContainers;
+use App\Services\DockerApi\RunServices;
 use App\Services\Filesystem\FS;
 use App\Services\Templates\MakeTemplate;
 use Kernel\Request;
@@ -23,12 +24,16 @@ class ContainersController extends Controller
         $service = $request->get('service');
         $vcpus = $request->get('vcpus');
         $memory = $request->get('memory');
+        $uniqueId = uniqid();
 
         $filesystem = new FS();
-        $templates = new MakeTemplate($name, $service, $vcpus, $memory);
+        $templates = new MakeTemplate($name, $service, $vcpus, $memory, $uniqueId);
 
-        $makeClientFolder = $filesystem->makeClientFolder($name);
-        $makeTemplate = $templates->createTemplate();
+        $clientFolder = $filesystem->makeClientFolder($name);
+        $template = $templates->createTemplate();
+        $ymlFilePath = $filesystem->createYmlService($service, $name, $clientFolder, $uniqueId, $template);
 
+        // run docker service
+        (new RunServices)->run($ymlFilePath);
     }
 }

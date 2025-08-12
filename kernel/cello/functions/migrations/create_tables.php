@@ -124,9 +124,8 @@ function createTablePostgres($schema, $reset = false)
     return $sql;
 }
 
-function createTableSQLite()
+function createTableSQLite($schema, $reset=false)
 {
-    global $schema;
     $sql = "CREATE TABLE IF NOT EXISTS `" . $schema['table'] . "` (\n    `" . $schema['table_id'] . "` INTEGER PRIMARY KEY AUTOINCREMENT";
 
     foreach ($schema['columns'] as $column => $attributes) {

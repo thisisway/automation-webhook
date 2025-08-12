@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   {{CONTAINER_NAME}}:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -9,15 +7,6 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - WEBHOOK_URL=https://{{N8N_HOST}}/
-      - GENERIC_TIMEZONE={{TIMEZONE}}
-      - TZ={{TIMEZONE}}
-      - N8N_ENCRYPTION_KEY={{N8N_ENCRYPTION_KEY}}
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST={{DB_HOST}}
-      - DB_POSTGRESDB_PORT={{DB_PORT}}
-      - DB_POSTGRESDB_DATABASE={{DB_DATABASE}}
-      - DB_POSTGRESDB_USER={{DB_USER}}
-      - DB_POSTGRESDB_PASSWORD={{DB_PASSWORD}}
       - N8N_METRICS=true
       - N8N_LOG_LEVEL=info
     volumes:
@@ -31,11 +20,11 @@ services:
           - node.role == manager
       resources:
         limits:
-          cpus: '{{CPU_LIMIT}}'
-          memory: {{MEMORY_LIMIT}}
+          cpus: {{CPU_LIMIT}}
+          memory: "{{MEMORY_LIMIT}}"
         reservations:
-          cpus: '{{CPU_RESERVATION}}'
-          memory: {{MEMORY_RESERVATION}}
+          cpus: 0
+          memory: "0"
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -71,6 +60,6 @@ volumes:
       o: bind
       device: {{VOLUME_PATH}}
 
-networks:
+automation-webhook:
   traefik:
     external: true

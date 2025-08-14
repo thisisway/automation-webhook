@@ -50,7 +50,7 @@ if (!str_contains(shell_exec("docker info"), "Swarm: active")) {
 $networks = shell_exec("docker network ls --filter name=^automation-webhook$ --format '{{.Name}}'");
 $networks = $networks ?? ""; // Garante que não seja null
 if (trim($networks) !== "automation-webhook") {
-    run("docker network create --driver overlay automation-webhook");
+    run("docker network create --driver overlay --attachable automation-webhook");
     sleep(3); // Espera 3 segundos para a rede estar pronta
 } else {
     echo "Rede automation-webhook já existe.\n";
@@ -60,7 +60,7 @@ if (trim($networks) !== "automation-webhook") {
         echo "Rede existe mas não está acessível, recriando...\n";
         shell_exec("docker network rm automation-webhook 2>/dev/null");
         sleep(1);
-        run("docker network create --driver overlay automation-webhook");
+        run("docker network create --driver overlay --attachable automation-webhook");
         sleep(3);
     }
 }

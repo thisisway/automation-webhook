@@ -2,7 +2,7 @@
 namespace App\Services\Templates;
 
 use App\Models\Configs;
-use PSpell\Config;
+use App\Services\Filesystem\FS;
 
 class MakeTemplate
 {
@@ -14,7 +14,7 @@ class MakeTemplate
 
     public function __construct($name, $service, $vcpus, $memory, $uniqueId)
     {
-        $this->name = strtolower(trim($name));
+        $this->name = (new FS)->normalizeName($name);
         $this->service = strtolower(trim($service));
         $this->vcpus = (int)$vcpus;
         $this->memory = (int)$memory;
@@ -37,7 +37,7 @@ class MakeTemplate
         $containerName = 'n8n-' . preg_replace('/[^a-zA-Z0-9]/', '', str_replace(' ','-',$this->name)) .'-'.$this->uniqueId;
         $n8nHost = $containerName . '.'.  (new Configs)->where('key','domain')->first()->value;
         $volumeName = str_replace('-','_',$containerName).'_data';
-        $volumePath = '/etc/automation-webhook/' . $containerName;
+        $volumePath = '/etc/automation-webhook/'. $this->name. '/' . $containerName;
 
         $template = str_replace('{{CONTAINER_NAME}}', $containerName, $template);
         $template = str_replace('{{N8N_HOST}}', $n8nHost, $template);
@@ -45,7 +45,7 @@ class MakeTemplate
         $template = str_replace('{{VOLUME_PATH}}', $volumePath, $template);
         $template = str_replace('{{NAME}}', $this->name, $template);
         $template = str_replace('{{CPU_LIMIT}}', $this->vcpus, $template);
-        $template = str_replace('{{MEMORY_LIMIT}}', $this->memory, $template);
+        $template = str_replace('{{MEMORY_LIMIT}}', $this->memory.'MB', $template);
         return $template;
     }
 }

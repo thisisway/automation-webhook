@@ -40,7 +40,7 @@ class FS
         return $path;
     }
 
-    private function normalizeName($name)
+    public function normalizeName($name)
     {
         $name = strtolower(trim($name));
         $name = preg_replace('/[^a-z0-9-]/', '-', $name);

@@ -10,7 +10,9 @@ services:
       - N8N_METRICS=true
       - N8N_LOG_LEVEL=info
     volumes:
-      - "{{VOLUME_NAME}}:/home/node/.n8n"
+      - type: bind
+        source: {{VOLUME_PATH}}
+        target: /home/node/.n8n
     networks:
       - automation-webhook
     deploy:
@@ -20,11 +22,11 @@ services:
           - node.role == manager
       resources:
         limits:
-          cpus: {{CPU_LIMIT}}
-          memory: "{{MEMORY_LIMIT}}"
+          cpus: '{{CPU_LIMIT}}'
+          memory: '{{MEMORY_LIMIT}}'
         reservations:
-          cpus: 0
-          memory: "0"
+          cpus: 1
+          memory: '512MB'
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -34,32 +36,19 @@ services:
         delay: 10s
         failure_action: rollback
       labels:
-        # Traefik
         - traefik.enable=true
         - traefik.docker.network=automation-webhook
-        
-        # HTTP (redirect to HTTPS)
         - traefik.http.routers.{{CONTAINER_NAME}}.rule=Host(`{{N8N_HOST}}`)
         - traefik.http.routers.{{CONTAINER_NAME}}.entrypoints=web
         - traefik.http.routers.{{CONTAINER_NAME}}.middlewares={{CONTAINER_NAME}}-redirect
-        
-        # HTTPS
         - traefik.http.routers.{{CONTAINER_NAME}}-secure.rule=Host(`{{N8N_HOST}}`)
         - traefik.http.routers.{{CONTAINER_NAME}}-secure.entrypoints=websecure
         - traefik.http.routers.{{CONTAINER_NAME}}-secure.tls=true
         - traefik.http.routers.{{CONTAINER_NAME}}-secure.tls.certresolver={{CERT_RESOLVER}}
-        
-        # Service
         - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.server.port=5678
+        - traefik.http.middlewares.{{CONTAINER_NAME}}-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.{{CONTAINER_NAME}}-redirect.redirectscheme.permanent=true
 
-volumes:
-  {{VOLUME_NAME}}:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{VOLUME_PATH}}
-
-automation-webhook:
-  traefik:
+networks:
+  automation-webhook:
     external: true

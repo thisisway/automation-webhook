@@ -37,7 +37,7 @@ class MakeTemplate
         $containerName = 'n8n-' . preg_replace('/[^a-zA-Z0-9]/', '', str_replace(' ','-',$this->name)) .'-'.$this->uniqueId;
         $n8nHost = $containerName . '.'.  (new Configs)->where('key','domain')->first()->value;
         $volumeName = str_replace('-','_',$containerName).'_data';
-        $volumePath = '/etc/automation-webhook/'. $this->name. '/' . $containerName;
+        $volumePath = str_replace('-','_',$containerName).'_data';
 
         $template = str_replace('{{CONTAINER_NAME}}', $containerName, $template);
         $template = str_replace('{{N8N_HOST}}', $n8nHost, $template);

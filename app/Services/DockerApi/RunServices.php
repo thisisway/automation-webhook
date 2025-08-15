@@ -2,8 +2,8 @@
 namespace App\Services\DockerApi;
 class RunServices {
     public function run($ymlFilePath) {
+        echo "cd $ymlFilePath && docker compose up -d";
         // cd in yml file path and run docker-compose up -d
-        dd("cd $ymlFilePath && docker compose up -d");
         exec("cd $ymlFilePath && docker compose up -d", $output, $return_var);
 
         // Wait for the container to be ready

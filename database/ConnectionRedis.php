@@ -22,7 +22,8 @@ class ConnectionRedis
             if ($parameters['username'] && $parameters['password'])
                 $this->redis->auth($parameters['username'], $parameters['password']);
         } catch (\Exception $e) {
-            dd($e);
+            echo json_encode(['error' => true, 'message' => $e->getMessage()]);
+            exit(0);
         }
     }
 

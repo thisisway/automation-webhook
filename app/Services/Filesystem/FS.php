@@ -31,7 +31,7 @@ class FS
     public function createYmlService($service, $name, $clientFolder, $uniqueId, $content = '')
     {
         $name = $this->normalizeName($name);
-        $path = $this->basePath . $clientFolder . '/' . $service . '-' . $name . '-' . $uniqueId;
+        $path = $clientFolder . '/' . $service . '-' . $name . '-' . $uniqueId;
         if (!is_dir($path)) {
             mkdir($path, 0755, true);
         }

@@ -35,9 +35,9 @@ class FS
         return $folder . '/' . $container . '/data';
     }
 
-    public function createYml($folder, $content = '')
+    public function createYml($folder, $container, $content = '')
     {
-        $path = $folder . '/service.yml';
+        $path = $folder . '/' . $container . '/docker-compose.yml';
         file_put_contents($path, $content);
         return $path;
     }

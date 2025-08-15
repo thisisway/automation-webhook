@@ -44,9 +44,6 @@ class MakeTemplate
         $template = str_replace('{{NAME}}', $this->name, $template);
         $template = str_replace('{{CPU_LIMIT}}', $this->vcpus, $template);
         $template = str_replace('{{MEMORY_LIMIT}}', $this->memory.'MB', $template);
-
-        echo $template;
-        die();
         return $template;
     }
 }

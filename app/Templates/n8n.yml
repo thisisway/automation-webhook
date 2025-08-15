@@ -9,7 +9,8 @@ services:
       - N8N_RUNNERS_ENABLED=true
     volumes:
       - type: volume
-        {{CONTAINER_NAME}}_data:/home/node/.n8n
+        source: {{CONTAINER_NAME}}_data
+        target: /home/node/.n8n
     networks:
       - automation-webhook
     labels:
@@ -77,7 +78,3 @@ networks:
 volumes:
   {{CONTAINER_NAME}}_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: {{VOLUME_PATH}}

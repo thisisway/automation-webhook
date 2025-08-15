@@ -35,7 +35,7 @@ class ContainersController extends Controller
         $templates = new MakeTemplate($name, $service, $vcpus, $memory, $volume, $container);
 
         $template     = $templates->createTemplate();
-        $ymlFilePath  = $filesystem->createYml($folder, $template);
+        $ymlFilePath  = $filesystem->createYml($folder, $container, $template);
 
         // run docker service
         (new RunServices)->run($ymlFilePath);

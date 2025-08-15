@@ -12,6 +12,7 @@ class Api
         $this->group('/api', function () {
             $this->setRoute('GET', '/list', 'ContainersController@listContainers');
             $this->setRoute('POST', '/create', 'ContainersController@createContainer');
+            $this->setRoute('POST', '/set-domain', 'ConfigsController@setDomain');
         });
     }
 }

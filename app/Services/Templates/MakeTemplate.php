@@ -6,19 +6,21 @@ use App\Services\Filesystem\FS;
 
 class MakeTemplate
 {
-    protected $name;
-    protected $service;
-    protected $vcpus;
-    protected $memory;
-    protected $uniqueId;
+    private $name;
+    private $service;
+    private $vcpus;
+    private $memory;
+    private $volume;
+    private $container;
 
-    public function __construct($name, $service, $vcpus, $memory, $uniqueId)
+    public function __construct($name, $service, $vcpus, $memory, $volume, $container)
     {
         $this->name = (new FS)->normalizeName($name);
         $this->service = strtolower(trim($service));
         $this->vcpus = (int)$vcpus;
         $this->memory = (int)$memory;
-        $this->uniqueId = $uniqueId;
+        $this->volume = $volume;
+        $this->container = $container;
     }
 
     public function createTemplate()
@@ -33,19 +35,18 @@ class MakeTemplate
 
     private function createN8nTemplate(){
         $template = file_get_contents(dirname(__DIR__, 2) . '/Templates/n8n.yml');
+        $n8nHost = $this->container . '.'.  (new Configs)->where('key','domain')->first()->value;
 
-        $containerName = 'n8n-' . preg_replace('/[^a-zA-Z0-9]/', '', str_replace(' ','-',$this->name)) .'-'.$this->uniqueId;
-        $n8nHost = $containerName . '.'.  (new Configs)->where('key','domain')->first()->value;
-        $volumeName = 'data';
-        $volumePath = 'data';
-
-        $template = str_replace('{{CONTAINER_NAME}}', $containerName, $template);
+        $template = str_replace('{{CONTAINER_NAME}}', $this->container, $template);
         $template = str_replace('{{N8N_HOST}}', $n8nHost, $template);
-        $template = str_replace('{{VOLUME_NAME}}', $volumeName, $template);
-        $template = str_replace('{{VOLUME_PATH}}', $volumePath, $template);
+        $template = str_replace('{{VOLUME_NAME}}', $this->container, $template);
+        $template = str_replace('{{VOLUME_PATH}}', $this->volume, $template);
         $template = str_replace('{{NAME}}', $this->name, $template);
         $template = str_replace('{{CPU_LIMIT}}', $this->vcpus, $template);
         $template = str_replace('{{MEMORY_LIMIT}}', $this->memory.'MB', $template);
+
+        echo $template;
+        die();
         return $template;
     }
 }

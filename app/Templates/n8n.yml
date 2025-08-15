@@ -1,7 +1,6 @@
 services:
   {{CONTAINER_NAME}}:
     image: docker.n8n.io/n8nio/n8n:latest
-    restart: unless-stopped
     environment:
       - N8N_HOST={{N8N_HOST}}
       - GENERIC_TIMEZONE=America/Sao_Paulo
@@ -10,10 +9,46 @@ services:
       - N8N_RUNNERS_ENABLED=true
     volumes:
       - type: volume
-        source: {{CONTAINER_NAME}}_data
-        target: /home/node/.n8n
+        {{CONTAINER_NAME}}_data:/home/node/.n8n
     networks:
       - automation-webhook
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=automation-webhook
+      # Configuração de serviço com nome único
+      - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.server.port=5678
+      - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.passhostheader=true
+      
+      # Middleware para headers de segurança
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.customResponseHeaders.X-Robots-Tag=none
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.framedeny=true
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.sslredirect=true
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.stsPreload=true
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.headers.stsSeconds=315360000
+      
+      # HTTP router (sem TLS) com nome único
+      - traefik.http.routers.{{CONTAINER_NAME}}.rule=Host(`{{N8N_HOST}}`)
+      - traefik.http.routers.{{CONTAINER_NAME}}.entrypoints=web
+      - traefik.http.routers.{{CONTAINER_NAME}}.service={{CONTAINER_NAME}}
+      - traefik.http.routers.{{CONTAINER_NAME}}.middlewares={{CONTAINER_NAME}}
+      
+      # Middleware para redirecionamento HTTPS
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.redirectscheme.scheme=https
+      - traefik.http.middlewares.{{CONTAINER_NAME}}.redirectscheme.permanent=true
+      
+      # HTTPS router (com TLS) com nome único
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.rule=Host(`{{N8N_HOST}}`)
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.entrypoints=websecure
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.tls=true
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.service={{CONTAINER_NAME}}
+      - traefik.http.routers.{{CONTAINER_NAME}}-n8n-https.middlewares={{CONTAINER_NAME}}-security-headers
+      
+      # Configurações de timeout para evitar conexões pendentes
+      - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.healthcheck.path=/
+      - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.healthcheck.timeout=5s
     deploy:
       replicas: 1
       placement:
@@ -24,7 +59,7 @@ services:
           cpus: '{{CPU_LIMIT}}'
           memory: '{{MEMORY_LIMIT}}'
         reservations:
-          cpus: 1
+          cpus: '0.2'
           memory: '512MB'
       restart_policy:
         condition: on-failure
@@ -34,19 +69,6 @@ services:
         parallelism: 1
         delay: 10s
         failure_action: rollback
-      labels:
-        - traefik.enable=true
-        - traefik.docker.network=automation-webhook
-        - traefik.http.routers.{{CONTAINER_NAME}}.rule=Host(`{{N8N_HOST}}`)
-        - traefik.http.routers.{{CONTAINER_NAME}}.entrypoints=web
-        - traefik.http.routers.{{CONTAINER_NAME}}.middlewares={{CONTAINER_NAME}}-redirect
-        - traefik.http.routers.{{CONTAINER_NAME}}-secure.rule=Host(`{{N8N_HOST}}`)
-        - traefik.http.routers.{{CONTAINER_NAME}}-secure.entrypoints=websecure
-        - traefik.http.routers.{{CONTAINER_NAME}}-secure.tls=true
-        - traefik.http.routers.{{CONTAINER_NAME}}-secure.tls.certresolver={{CERT_RESOLVER}}
-        - traefik.http.services.{{CONTAINER_NAME}}.loadbalancer.server.port=5678
-        - traefik.http.middlewares.{{CONTAINER_NAME}}-redirect.redirectscheme.scheme=https
-        - traefik.http.middlewares.{{CONTAINER_NAME}}-redirect.redirectscheme.permanent=true
 
 networks:
   automation-webhook:

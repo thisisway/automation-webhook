@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install intl pdo pdo_mysql pdo_sqlite
 
 RUN apt-get update && apt-get install -y docker.io curl
-
+RUN curl -sSL https://get.docker.com | sh
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV DB_CONNECTION=sqlite

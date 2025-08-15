@@ -11,7 +11,7 @@ class FS
         $this->basePath = "/etc/automation-webhook";
     }
 
-    public function makeClientFolder($name)
+    public function makeFolder($name)
     {
         try {
             $name = $this->normalizeName($name);
@@ -28,15 +28,17 @@ class FS
         }
     }
 
-    public function createYmlService($service, $name, $clientFolder, $uniqueId, $content = '')
+    public function makeVolume($folder, $container)
     {
-        $name = $this->normalizeName($name);
-        $path = $clientFolder . '/' . $service . '-' . $name . '-' . $uniqueId;
-        if (!is_dir($path)) {
-            mkdir($path, 0755, true);
-        }
-        $ymlFile = $path . '/docker-compose.yml';
-        file_put_contents($ymlFile, $content);
+        if(!is_dir($folder .'/' . $container . '/data'))
+            mkdir($folder .'/' . $container . '/data', 0755, true);
+        return $folder . '/' . $container . '/data';
+    }
+
+    public function createYml($folder, $content = '')
+    {
+        $path = $folder . '/service.yml';
+        file_put_contents($path, $content);
         return $path;
     }
 

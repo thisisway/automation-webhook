@@ -20,18 +20,22 @@ class ContainersController extends Controller
     {
         \App\Validations\CreateContainerValidation::rules($request);
 
-        $name = $request->get('name');
-        $service = $request->get('service');
-        $vcpus = $request->get('vcpus');
-        $memory = $request->get('memory');
-        $uniqueId = uniqid();
+        $name       = $request->get('name');
+        $service    = $request->get('service');
+        $vcpus      = $request->get('vcpus');
+        $memory     = $request->get('memory');
+        $uniqueId   = uniqid();
+        $container  = $service.'-'.$name.'-'.$uniqueId;
 
         $filesystem = new FS();
-        $templates = new MakeTemplate($name, $service, $vcpus, $memory, $uniqueId);
+        $folder     = $filesystem->makeFolder($name);
+        $volume     = $filesystem->makeVolume($folder, $container);
+        
 
-        $clientFolder = $filesystem->makeClientFolder($name);
-        $template = $templates->createTemplate();
-        $ymlFilePath = $filesystem->createYmlService($service, $name, $clientFolder, $uniqueId, $template);
+        $templates = new MakeTemplate($name, $service, $vcpus, $memory, $volume, $container);
+
+        $template     = $templates->createTemplate();
+        $ymlFilePath  = $filesystem->createYml($folder, $template);
 
         // run docker service
         (new RunServices)->run($ymlFilePath);

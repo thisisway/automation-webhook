@@ -20,7 +20,7 @@ class FS
             if (!is_dir($clientPath)) {
                 mkdir($clientPath, 0755, true);
             }
-
+            
             return $clientPath;
         } catch (\Exception $e) {
             echo "Error when create client folder: " . $e->getMessage();

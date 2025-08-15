@@ -9,8 +9,8 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
     volumes:
-      - type: bind
-        source: {{VOLUME_PATH}}
+      - type: volume
+        source: {{CONTAINER_NAME}}_data
         target: /home/node/.n8n
     networks:
       - automation-webhook
@@ -51,3 +51,11 @@ services:
 networks:
   automation-webhook:
     external: true
+
+volumes:
+  {{CONTAINER_NAME}}_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{VOLUME_PATH}}
